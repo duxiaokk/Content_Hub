@@ -1,0 +1,93 @@
+# =============================================================================
+# Prometheus 配置文件
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: ado-jk-platform
+    env: production
+
+# 告警规则
+rule_files:
+  - /etc/prometheus/alerting_rules.yml
+
+# 采集目标
+scrape_configs:
+  # --- 平台主服务 ---
+  - job_name: platform
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - platform:8000
+        labels:
+          service: platform
+
+  # --- 调度中心 API ---
+  - job_name: scheduler-api
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - scheduler-api:8010
+        labels:
+          service: scheduler-api
+
+  # --- Audit Agent ---
+  - job_name: audit-agent
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - audit-agent:8000
+        labels:
+          service: audit-agent
+
+  # --- P4 Agent 集群 ---
+  - job_name: planner-agent
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - planner-agent:8100
+        labels:
+          service: agent.planner-agent
+
+  - job_name: data-processor-agent
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - data-processor-agent:8110
+        labels:
+          service: agent.data-processor-agent
+
+  - job_name: tool-calling-agent
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - tool-calling-agent:8120
+        labels:
+          service: agent.tool-calling-agent
+
+  - job_name: content-generator-agent
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - content-generator-agent:8130
+        labels:
+          service: agent.content-generator-agent
+
+  - job_name: aggregator-agent
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - aggregator-agent:8140
+        labels:
+          service: agent.aggregator-agent
+
+  # --- Prometheus 自身 ---
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+        labels:
+          service: prometheus

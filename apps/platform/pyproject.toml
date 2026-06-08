@@ -1,0 +1,28 @@
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = [
+    ".git",
+    ".tmp",
+    ".tmp_dbinspect",
+    ".uv-cache",
+    ".uv-cache-local",
+    ".uv-python",
+    ".venv",
+    ".venv_broken_20260420",
+    ".venv_uv",
+    "__pycache__",
+    "alembic",
+    "migrations",
+    "pytest-cache-files-*",
+]
+
+[tool.ruff.lint]
+select = ["F", "I"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
+

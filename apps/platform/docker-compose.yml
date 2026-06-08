@@ -1,0 +1,642 @@
+﻿# =============================================================================
+# Ado_Jk Multi-Agent Orchestration Platform 鈥?Docker Compose
+# =============================================================================
+# 涓€閿惎鍔?  docker compose up -d
+# 鏌ョ湅鏃ュ織:  docker compose logs -f
+# 鍋滄鏈嶅姟:  docker compose down
+# 娓呯悊鏁版嵁:  docker compose down -v
+# =============================================================================
+
+x-common-env: &common-env
+  TZ: Asia/Hong_Kong
+
+# 骞冲彴涓绘湇鍔?& 璋冨害涓績鍏辩敤鐜鍙橀噺
+x-platform-env: &platform-env
+  <<: *common-env
+  # 鏁版嵁搴?  DATABASE_URL: postgresql://blog_user:blog_pass@postgres:5432/blog_db
+  # 瀹夊叏
+  SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+  ALGORITHM: HS256
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  REFRESH_TOKEN_EXPIRE_DAYS: "30"
+  ADMIN_USERNAME: Ado_Jk
+  TECH_TAGS: Python,FastAPI,SQLAlchemy,PostgreSQL
+  # Redis
+  REDIS_URL: redis://redis:6379/0
+  # 璋冨害涓績
+  SCHEDULER_CENTER_URL: http://scheduler-api:8010
+  SCHEDULER_INTERNAL_TOKEN: ${SCHEDULER_INTERNAL_TOKEN:-local-dev-scheduler-token}
+  # LLM
+  LLM_API_KEY: ${LLM_API_KEY:-sk-placeholder}
+  LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+  LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+  MOCK_LLM: ${MOCK_LLM:-false}
+  # 鍐呴儴 Agent Token
+  INTERNAL_AGENT_TOKEN: ${INTERNAL_AGENT_TOKEN:-local-dev-internal-token}
+  # 鏃ュ織
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: json
+  # 鍙娴嬫€?(P5)
+  OTEL_ENABLED: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+  OTEL_SERVICE_NAME: platform
+  METRICS_ENABLED: "true"
+
+x-scheduler-env: &scheduler-env
+  <<: *common-env
+  SCHEDULER_DATABASE_URL: postgresql://blog_user:blog_pass@postgres:5432/blog_db
+  SCHEDULER_DB_PATH: /app/data/scheduler.db
+  SCHEDULER_INTERNAL_TOKEN: ${SCHEDULER_INTERNAL_TOKEN:-local-dev-scheduler-token}
+  SCHEDULER_MAX_CONCURRENCY: "8"
+  SCHEDULER_POLL_INTERVAL_SECONDS: "0.5"
+  SCHEDULER_DEFAULT_MAX_RETRIES: "2"
+  SCHEDULER_DEFAULT_RETRY_DELAY_SECONDS: "3"
+  SCHEDULER_HTTP_TIMEOUT_SECONDS: "60"
+  SCHEDULER_DISABLE_DISPATCHER: "false"
+  SCHEDULER_AGENT_ENDPOINTS: http://audit-agent:8000
+  SCHEDULER_AGENT_REQUEST_PATH: /api/internal/agent/run
+  SCHEDULER_AGENT_TOKEN: ${SCHEDULER_AGENT_TOKEN:-}
+  SCHEDULER_CORS_ALLOW_ORIGINS: ""
+  SCHEDULER_REDIS_URL: redis://redis:6379/0
+  SCHEDULER_REDIS_PREFIX: scheduler
+  SCHEDULER_FAST_SUBMIT_ENABLED: "false"
+  SCHEDULER_FAST_SUBMIT_TASK_TTL_SECONDS: "3600"
+  SCHEDULER_SQLITE_BUSY_TIMEOUT_SECONDS: "30"
+  SCHEDULER_DB_POOL_SIZE: "10"
+  SCHEDULER_DB_MAX_OVERFLOW: "20"
+  SCHEDULER_DB_POOL_TIMEOUT_SECONDS: "30"
+  SCHEDULER_AGENT_HEARTBEAT_TTL_SECONDS: "120"
+  SCHEDULER_AGENT_HEALTH_CACHE_SECONDS: "10"
+  SCHEDULER_AGENT_HEALTH_TIMEOUT_SECONDS: "2"
+  LOG_FORMAT: json
+  # 鍙娴嬫€?(P5)
+  OTEL_ENABLED: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+  OTEL_SERVICE_NAME: scheduler-api
+  METRICS_ENABLED: "true"
+
+x-agent-env: &agent-env
+  <<: *common-env
+  SCHEDULER_CENTER_URL: http://scheduler-api:8010
+  SCHEDULER_INTERNAL_TOKEN: ${SCHEDULER_INTERNAL_TOKEN:-local-dev-scheduler-token}
+  INTERNAL_AGENT_TOKEN: ${INTERNAL_AGENT_TOKEN:-local-dev-internal-token}
+  REDIS_URL: redis://redis:6379/0
+  LLM_API_KEY: ${LLM_API_KEY:-sk-placeholder}
+  LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+  LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
+  MOCK_LLM: ${MOCK_LLM:-false}
+
+# ---------------------------------------------------------------------------
+# 鍏变韩璧勬簮閰嶇疆
+# ---------------------------------------------------------------------------
+x-deploy-small: &deploy-small
+  deploy:
+    resources:
+      limits:
+        cpus: "0.5"
+        memory: 256M
+      reservations:
+        cpus: "0.1"
+        memory: 128M
+
+x-deploy-medium: &deploy-medium
+  deploy:
+    resources:
+      limits:
+        cpus: "1.0"
+        memory: 512M
+      reservations:
+        cpus: "0.25"
+        memory: 256M
+
+x-deploy-large: &deploy-large
+  deploy:
+    resources:
+      limits:
+        cpus: "2.0"
+        memory: 1G
+      reservations:
+        cpus: "0.5"
+        memory: 512M
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+# ---------------------------------------------------------------------------
+services:
+  # =========================================================================
+  # 鍩虹璁炬柦 (Infrastructure)
+  # =========================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: blog-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: blog_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-blog_pass}
+      POSTGRES_DB: blog_db
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"  # 浠呭紑鍙戞椂鏆撮湶锛岀敓浜ф敞閲婃帀
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - blog-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blog_user -d blog_db"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+    <<: *deploy-large
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    container_name: blog-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"  # 浠呭紑鍙戞椂鏆撮湶锛岀敓浜ф敞閲婃帀
+    volumes:
+      - redis-data:/data
+    networks:
+      - blog-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
+    <<: *deploy-small
+    logging: *logging
+
+  # =========================================================================
+  # 鍙娴嬫€у熀纭€璁炬柦 (Observability)
+  # =========================================================================
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.68
+    container_name: blog-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: badger
+      BADGER_EPHEMERAL: "false"
+      BADGER_DIRECTORY_VALUE: /badger/data
+      BADGER_DIRECTORY_KEY: /badger/key
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC
+    volumes:
+      - jaeger-data:/badger
+    networks:
+      - blog-net
+    <<: *deploy-medium
+    logging: *logging
+
+  prometheus:
+    image: prom/prometheus:v3.3.0
+    container_name: blog-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./configs/alerting_rules.yml:/etc/prometheus/alerting_rules.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - blog-net
+    <<: *deploy-medium
+    logging: *logging
+
+  loki:
+    image: grafana/loki:3.4.0
+    container_name: blog-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./configs/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    networks:
+      - blog-net
+    <<: *deploy-medium
+    logging: *logging
+
+  promtail:
+    image: grafana/promtail:3.4.0
+    container_name: blog-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./configs/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+    networks:
+      - blog-net
+    depends_on:
+      - loki
+    <<: *deploy-small
+    logging: *logging
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: blog-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: ""
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./configs/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./configs/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./configs/dashboards:/etc/grafana/provisioning/dashboards/json:ro
+    networks:
+      - blog-net
+    depends_on:
+      - prometheus
+      - loki
+    <<: *deploy-medium
+    logging: *logging
+
+  # =========================================================================
+  # 璋冨害涓績 (Scheduler Center)
+  # =========================================================================
+
+  scheduler-api:
+    build:
+      context: .
+      dockerfile: scheduler_center/Dockerfile
+    image: personal-blog-scheduler:latest
+    container_name: blog-scheduler-api
+    restart: unless-stopped
+    command:
+      - python
+      - -m
+      - uvicorn
+      - scheduler_center.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8010"
+    environment:
+      <<: *scheduler-env
+      SCHEDULER_DISABLE_DISPATCHER: "true"
+    ports:
+      - "8010:8010"
+    volumes:
+      - scheduler-data:/app/data
+    networks:
+      - blog-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8010/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    <<: *deploy-medium
+    logging: *logging
+
+  scheduler-dispatcher:
+    build:
+      context: .
+      dockerfile: scheduler_center/Dockerfile
+    image: personal-blog-scheduler:latest
+    container_name: blog-scheduler-dispatcher
+    restart: unless-stopped
+    command:
+      - python
+      - -m
+      - scheduler_center.worker
+    environment:
+      <<: *scheduler-env
+      SCHEDULER_DISABLE_DISPATCHER: "false"
+    volumes:
+      - scheduler-data:/app/data
+    networks:
+      - blog-net
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+    <<: *deploy-medium
+    logging: *logging
+
+  scheduler-ingest:
+    build:
+      context: .
+      dockerfile: scheduler_center/Dockerfile
+    image: personal-blog-scheduler:latest
+    container_name: blog-scheduler-ingest
+    restart: unless-stopped
+    command:
+      - python
+      - -m
+      - scheduler_center.ingest_worker
+    environment:
+      <<: *scheduler-env
+      SCHEDULER_REDIS_URL: redis://redis:6379/0
+      SCHEDULER_FAST_SUBMIT_ENABLED: "true"
+    volumes:
+      - scheduler-data:/app/data
+    networks:
+      - blog-net
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # 榛樿涓嶅惎鍔?Ingest Worker锛堜粎 Fast Submit 妯″紡闇€瑕侊級
+    # 鍚姩: docker compose --profile ingest up -d
+    profiles:
+      - ingest
+    <<: *deploy-small
+    logging: *logging
+
+  # =========================================================================
+  # 骞冲彴涓绘湇鍔?(Platform Main Service)
+  # =========================================================================
+
+  platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: personal-blog:latest
+    container_name: blog-platform
+    restart: unless-stopped
+    environment:
+      <<: *platform-env
+    ports:
+      - "${PLATFORM_PORT:-8000}:8000"  # 瀵瑰鏆撮湶绔彛
+    volumes:
+      - platform-uploads:/app/image
+      - platform-drafts:/app/content/agent_drafts
+      - platform-logs:/app/logs
+    networks:
+      - blog-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      scheduler-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    <<: *deploy-large
+    logging: *logging
+
+  # =========================================================================
+  # Agent 鏈嶅姟 (Agent Services)
+  # =========================================================================
+
+  audit-agent:
+    build:
+      context: .
+      dockerfile: docker/audit-agent.Dockerfile
+    image: personal-blog-audit-agent:latest
+    container_name: blog-audit-agent
+    restart: unless-stopped
+    environment:
+      <<: *agent-env
+      AUDIT_AGENT_KEY: audit-agent
+      AUDIT_AGENT_NAME: audit-agent
+      AUDIT_AGENT_BASE_URL: http://audit-agent:8000
+      AUDIT_AGENT_INTERNAL_TOKEN: ${INTERNAL_AGENT_TOKEN:-local-dev-internal-token}
+    networks:
+      - blog-net
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    <<: *deploy-medium
+    logging: *logging
+
+  # --- 鏂板: P4 Agent 闆嗙兢 ---
+  planner-agent:
+    build:
+      context: .
+      dockerfile: docker/agent.Dockerfile
+    image: personal-blog-agent:latest
+    container_name: blog-planner-agent
+    restart: unless-stopped
+    command:
+      - python
+      - -m
+      - agents.planner_agent
+    environment:
+      <<: *agent-env
+      AGENT_KEY: planner-agent
+      AGENT_NAME: Planner Agent
+      AGENT_BASE_URL: http://planner-agent:8100
+      AGENT_PORT: "8100"
+    networks:
+      - blog-net
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8100/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    <<: *deploy-small
+    logging: *logging
+
+  data-processor-agent:
+    build:
+      context: .
+      dockerfile: docker/agent.Dockerfile
+    image: personal-blog-agent:latest
+    container_name: blog-data-processor-agent
+    restart: unless-stopped
+    command:
+      - python
+      - -m
+      - agents.data_processor_agent
+    environment:
+      <<: *agent-env
+      AGENT_KEY: data-processor-agent
+      AGENT_NAME: Data Processor Agent
+      AGENT_BASE_URL: http://data-processor-agent:8110
+      AGENT_PORT: "8110"
+    networks:
+      - blog-net
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8110/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    <<: *deploy-small
+    logging: *logging
+
+  tool-calling-agent:
+    build:
+      context: .
+      dockerfile: docker/agent.Dockerfile
+    image: personal-blog-agent:latest
+    container_name: blog-tool-calling-agent
+    restart: unless-stopped
+    command:
+      - python
+      - -m
+      - agents.tool_calling_agent
+    environment:
+      <<: *agent-env
+      AGENT_KEY: tool-calling-agent
+      AGENT_NAME: Tool Calling Agent
+      AGENT_BASE_URL: http://tool-calling-agent:8120
+      AGENT_PORT: "8120"
+    networks:
+      - blog-net
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8120/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    <<: *deploy-small
+    logging: *logging
+
+  content-generator-agent:
+    build:
+      context: .
+      dockerfile: docker/agent.Dockerfile
+    image: personal-blog-agent:latest
+    container_name: blog-content-generator-agent
+    restart: unless-stopped
+    command:
+      - python
+      - -m
+      - agents.content_generator_agent
+    environment:
+      <<: *agent-env
+      AGENT_KEY: content-generator-agent
+      AGENT_NAME: Content Generator Agent
+      AGENT_BASE_URL: http://content-generator-agent:8130
+      AGENT_PORT: "8130"
+    networks:
+      - blog-net
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8130/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    <<: *deploy-medium
+    logging: *logging
+
+  aggregator-agent:
+    build:
+      context: .
+      dockerfile: docker/agent.Dockerfile
+    image: personal-blog-agent:latest
+    container_name: blog-aggregator-agent
+    restart: unless-stopped
+    command:
+      - python
+      - -m
+      - agents.aggregator_agent
+    environment:
+      <<: *agent-env
+      AGENT_KEY: aggregator-agent
+      AGENT_NAME: Aggregator Agent
+      AGENT_BASE_URL: http://aggregator-agent:8140
+      AGENT_PORT: "8140"
+    networks:
+      - blog-net
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8140/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    <<: *deploy-small
+    logging: *logging
+
+# ---------------------------------------------------------------------------
+# 缃戠粶
+# ---------------------------------------------------------------------------
+networks:
+  blog-net:
+    driver: bridge
+    name: blog-net
+
+# ---------------------------------------------------------------------------
+# 鎸佷箙鍖栨暟鎹嵎
+# ---------------------------------------------------------------------------
+volumes:
+  postgres-data:
+    name: blog-postgres-data
+    driver: local
+  redis-data:
+    name: blog-redis-data
+    driver: local
+  scheduler-data:
+    name: blog-scheduler-data
+    driver: local
+  platform-uploads:
+    name: blog-platform-uploads
+    driver: local
+  platform-drafts:
+    name: blog-platform-drafts
+    driver: local
+  platform-logs:
+    name: blog-platform-logs
+    driver: local
+  jaeger-data:
+    name: blog-jaeger-data
+    driver: local
+  prometheus-data:
+    name: blog-prometheus-data
+    driver: local
+  loki-data:
+    name: blog-loki-data
+    driver: local
+  grafana-data:
+    name: blog-grafana-data
+    driver: local

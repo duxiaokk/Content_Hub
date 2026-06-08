@@ -1,0 +1,232 @@
+# =============================================================================
+# Prometheus Alerting Rules — Ado_Jk Platform
+# =============================================================================
+# 文档: https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
+# =============================================================================
+
+groups:
+  # ---------------------------------------------------------------------------
+  # Agent 健康告警
+  # ---------------------------------------------------------------------------
+  - name: agent_alerts
+    interval: 15s
+    rules:
+      - alert: AgentDown
+        expr: up{job=~"agent-.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: agent
+        annotations:
+          summary: "Agent {{ $labels.job }} is DOWN"
+          description: "Agent {{ $labels.job }} has been down for more than 2 minutes."
+          runbook: "Check Docker container status: docker compose ps | grep agent"
+
+      - alert: AgentHighErrorRate
+        expr: rate(agent_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          category: agent
+        annotations:
+          summary: "Agent {{ $labels.job }} error rate > 10%"
+          description: "Agent {{ $labels.job }} has error rate {{ $value | humanizePercentage }} over last 5 minutes."
+          runbook: "Check agent logs: docker compose logs {{ $labels.job }}"
+
+      - alert: AgentHeartbeatTimeout
+        expr: time() - agent_last_heartbeat_seconds > 120
+        for: 1m
+        labels:
+          severity: warning
+          category: agent
+        annotations:
+          summary: "Agent {{ $labels.agent_key }} heartbeat timeout"
+          description: "Agent {{ $labels.agent_key }} has not sent heartbeat for > 120 seconds."
+
+  # ---------------------------------------------------------------------------
+  # 调度中心告警
+  # ---------------------------------------------------------------------------
+  - name: scheduler_alerts
+    interval: 15s
+    rules:
+      - alert: SchedulerQueueBacklog
+        expr: scheduler_task_queue_depth > 100
+        for: 5m
+        labels:
+          severity: warning
+          category: scheduler
+        annotations:
+          summary: "Scheduler task queue depth > 100"
+          description: "Task queue has {{ $value }} pending tasks for more than 5 minutes."
+          runbook: "Check dispatcher status and agent availability."
+
+      - alert: SchedulerHighFailureRate
+        expr: rate(scheduler_task_failures_total[15m]) > 0.1
+        for: 10m
+        labels:
+          severity: critical
+          category: scheduler
+        annotations:
+          summary: "Scheduler task failure rate > 10%"
+          description: "{{ $value | humanizePercentage }} of tasks failing over last 15 minutes."
+
+      - alert: SchedulerAPIDown
+        expr: up{job="scheduler-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: scheduler
+        annotations:
+          summary: "Scheduler API is DOWN"
+          description: "The scheduler-api service is not responding."
+          runbook: "Check: docker compose ps scheduler-api && docker compose logs scheduler-api"
+
+  # ---------------------------------------------------------------------------
+  # 编排引擎告警
+  # ---------------------------------------------------------------------------
+  - name: orchestration_alerts
+    interval: 30s
+    rules:
+      - alert: OrchestrationRunFailed
+        expr: rate(orchestration_runs_failed_total[15m]) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          category: orchestration
+        annotations:
+          summary: "Orchestration run failure rate > 5%"
+          description: "{{ $value | humanizePercentage }} of orchestration runs failed in last 15 minutes."
+
+      - alert: OrchestrationRunTimeout
+        expr: orchestration_run_duration_seconds > 300
+        labels:
+          severity: warning
+          category: orchestration
+        annotations:
+          summary: "Orchestration run exceeded 5 minutes"
+          description: "Run {{ $labels.run_id }} has been running for {{ $value }}s."
+
+  # ---------------------------------------------------------------------------
+  # 数据库告警
+  # ---------------------------------------------------------------------------
+  - name: database_alerts
+    interval: 15s
+    rules:
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: database
+        annotations:
+          summary: "PostgreSQL is DOWN"
+          description: "PostgreSQL service is not responding."
+
+      - alert: DatabaseConnectionPoolHigh
+        expr: pg_stat_activity_count > 50
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "Database connection pool > 50 connections"
+          description: "{{ $value }} active connections for more than 5 minutes. Consider increasing pool size."
+
+      - alert: DatabaseSlowQueries
+        expr: rate(pg_stat_statements_avg_exec_time_ms[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "Slow query detected"
+          description: "Average query time {{ $value }}ms over last 5 minutes."
+
+      - alert: DatabaseReplicationLag
+        expr: pg_stat_replication_lag_bytes > 10485760
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "Database replication lag > 10MB"
+
+  # ---------------------------------------------------------------------------
+  # 平台服务告警
+  # ---------------------------------------------------------------------------
+  - name: platform_alerts
+    interval: 15s
+    rules:
+      - alert: PlatformDown
+        expr: up{job="platform"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: platform
+        annotations:
+          summary: "Platform API is DOWN"
+          description: "The main platform service is not responding."
+          runbook: "Check: docker compose ps platform && docker compose logs platform"
+
+      - alert: PlatformHighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="platform"}[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          category: platform
+        annotations:
+          summary: "Platform p95 latency > 500ms"
+          description: "p95 latency is {{ $value }}s for platform service."
+
+      - alert: PlatformHighErrorRate
+        expr: rate(http_requests_total{job="platform",status=~"5.."}[5m]) / rate(http_requests_total{job="platform"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          category: platform
+        annotations:
+          summary: "Platform 5xx error rate > 5%"
+          description: "{{ $value | humanizePercentage }} 5xx rate on platform service."
+
+  # ---------------------------------------------------------------------------
+  # 基础设施告警
+  # ---------------------------------------------------------------------------
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "Redis is DOWN"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "Redis memory usage > 85%"
+          description: "Redis using {{ $value | humanizePercentage }} of max memory."
+
+      - alert: HighDiskUsage
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "Disk usage > 85% on {{ $labels.mountpoint }}"
+
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{name=~"blog-.*"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "Container {{ $labels.name }} CPU usage > 80%"

@@ -1,0 +1,771 @@
+{% extends "base.html" %}
+
+{% block title %}Ado_Jk | Multi-Agent Orchestration Platform{% endblock %}
+
+{% block extra_head %}
+<style>
+    .tech-posts {
+        margin-top: 36px;
+        display: grid;
+        gap: 22px;
+    }
+
+    .tech-posts__subtitle {
+        margin-bottom: 0;
+    }
+
+    .tech-posts__groups {
+        display: grid;
+        gap: 18px;
+    }
+
+    .tech-post-group {
+        padding: 22px 24px;
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.75);
+        box-shadow: var(--shadow-subtle);
+    }
+
+    .tech-post-group__head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .tech-post-group__head h3 {
+        font-size: 1.15rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+    }
+
+    .tech-post-group__head span,
+    .tech-post-group__empty {
+        color: var(--text-muted);
+        font-size: 0.92rem;
+    }
+
+    .tech-post-list {
+        display: grid;
+        gap: 10px;
+    }
+
+    .tech-post-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        background: rgba(249, 250, 251, 0.92);
+        border: 1px solid rgba(229, 231, 235, 0.85);
+        transition: var(--transition-smooth);
+    }
+
+    .tech-post-item:hover {
+        border-color: var(--accent);
+        transform: translateX(2px);
+    }
+
+    .tech-post-item__title {
+        font-weight: 700;
+        color: var(--text-main);
+    }
+
+    .tech-post-item__meta {
+        flex: 0 0 auto;
+        color: var(--text-muted);
+        font-size: 0.88rem;
+    }
+
+    /* Module card description */
+    .tech-card__desc {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin: 6px 0 0;
+        line-height: 1.4;
+    }
+    .tech-card__caps {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+    }
+    .tech-card__cap {
+        font-size: 0.75rem;
+        background: rgba(52, 152, 219, 0.08);
+        color: var(--accent, #3498db);
+        padding: 2px 8px;
+        border-radius: 20px;
+        white-space: nowrap;
+    }
+
+    /* Execution flow on homepage */
+    .exec-flow {
+        margin-top: 48px;
+    }
+    .exec-flow__title {
+        font-size: 1.5rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin-bottom: 4px;
+    }
+    .exec-flow__subtitle {
+        color: var(--text-muted);
+        font-size: 0.95rem;
+        margin-bottom: 28px;
+    }
+    .exec-flow__chain {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: stretch;
+        gap: 0;
+        position: relative;
+    }
+    .exec-flow__step {
+        flex: 1 1 160px;
+        min-width: 140px;
+        text-align: center;
+        padding: 20px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.75);
+        position: relative;
+        margin: 0 6px 12px;
+        transition: var(--transition-smooth);
+    }
+    .exec-flow__step:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-subtle);
+    }
+    .exec-flow__step-number {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--accent, #3498db);
+        color: #fff;
+        font-size: 0.78rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+    .exec-flow__step-name {
+        font-weight: 700;
+        font-size: 0.92rem;
+        margin-bottom: 4px;
+        color: var(--text-main);
+    }
+    .exec-flow__step-desc {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        line-height: 1.4;
+    }
+    .exec-flow__arrow {
+        display: none;
+    }
+
+    @media (min-width: 900px) {
+        .exec-flow__chain {
+            flex-wrap: nowrap;
+        }
+        .exec-flow__step {
+            margin: 0;
+        }
+        .exec-flow__step::after {
+            content: "→";
+            position: absolute;
+            right: -16px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.2rem;
+            color: var(--text-muted);
+            z-index: 1;
+        }
+        .exec-flow__step:last-child::after {
+            content: none;
+        }
+    }
+
+    /* Architecture page layers */
+    .arch-layer {
+        padding: 24px 28px;
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.7);
+        margin-bottom: 16px;
+    }
+    .arch-layer__head {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+    .arch-layer__name {
+        font-size: 1.1rem;
+        font-weight: 800;
+    }
+    .arch-layer__role {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+    }
+    .arch-layer__items {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .arch-layer__item {
+        font-size: 0.85rem;
+        background: rgba(249, 250, 251, 0.92);
+        border: 1px solid rgba(229, 231, 235, 0.85);
+        padding: 6px 14px;
+        border-radius: 20px;
+        color: var(--text-main);
+    }
+
+    @media (max-width: 992px) {
+        .tech-post-item {
+            flex-direction: column;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .tech-post-group {
+            padding: 18px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="container main-content {% if mode in ['about', 'archive', 'architecture'] %}main-content--single{% endif %}{% if mode == 'tech' %} main-content--tech{% endif %}">
+    {% if mode == 'about' %}
+        <section class="content-feed">
+            <header class="reveal">
+                <h1 class="section-title">关于平台</h1>
+                <p class="section-subtitle">基于 FastAPI 的多 Agent 任务编排平台。支持 Planner、任务拆解、任务依赖、结果聚合与共享记忆的可扩展执行平台。</p>
+            </header>
+            <div class="sidebar-widget reveal">
+                <h3 class="widget-title">平台简介</h3>
+                <p class="widget-text">Ado_Jk Multi-Agent Orchestration Platform —— 一个以调度中心为核心的分布式任务编排系统，集成 Agent 注册发现、异步任务分发、共享记忆池与结果聚合能力。</p>
+            </div>
+        </section>
+    {% elif mode == 'architecture' %}
+        <section class="content-feed">
+            <header class="reveal">
+                <h1 class="section-title">架构设计</h1>
+                <p class="section-subtitle">基于 FastAPI + Scheduler Center + Agent Registry + Shared Memory 的分层架构。</p>
+            </header>
+
+            <div class="arch-layer reveal">
+                <div class="arch-layer__head">
+                    <span class="arch-layer__name">接入层</span>
+                    <span class="arch-layer__role">Browser / API Client</span>
+                </div>
+                <div class="arch-layer__items">
+                    <span class="arch-layer__item">Web 页面 (Jinja2)</span>
+                    <span class="arch-layer__item">RESTful API</span>
+                    <span class="arch-layer__item">JWT / Cookie 鉴权</span>
+                </div>
+            </div>
+
+            <div class="arch-layer reveal delay-1">
+                <div class="arch-layer__head">
+                    <span class="arch-layer__name">平台主服务</span>
+                    <span class="arch-layer__role">FastAPI Application</span>
+                </div>
+                <div class="arch-layer__items">
+                    <span class="arch-layer__item">路由分发</span>
+                    <span class="arch-layer__item">Scheduler Client</span>
+                    <span class="arch-layer__item">Mempool Client</span>
+                    <span class="arch-layer__item">CSRF 防护</span>
+                </div>
+            </div>
+
+            <div class="arch-layer reveal delay-2">
+                <div class="arch-layer__head">
+                    <span class="arch-layer__name">调度层 — Scheduler Center</span>
+                    <span class="arch-layer__role">任务调度中枢</span>
+                </div>
+                <div class="arch-layer__items">
+                    <span class="arch-layer__item">Fast Submit (Redis)</span>
+                    <span class="arch-layer__item">Dispatcher 路由</span>
+                    <span class="arch-layer__item">Ingest Worker</span>
+                    <span class="arch-layer__item">任务状态机</span>
+                </div>
+            </div>
+
+            <div class="arch-layer reveal delay-3">
+                <div class="arch-layer__head">
+                    <span class="arch-layer__name">执行层 — Agent 系统</span>
+                    <span class="arch-layer__role">独立 FastAPI 服务</span>
+                </div>
+                <div class="arch-layer__items">
+                    <span class="arch-layer__item">Comment Agent</span>
+                    <span class="arch-layer__item">Audit Agent</span>
+                    <span class="arch-layer__item">Ado Repost</span>
+                    <span class="arch-layer__item">Agent Registry</span>
+                </div>
+            </div>
+
+            <div class="arch-layer reveal delay-4">
+                <div class="arch-layer__head">
+                    <span class="arch-layer__name">共享层 — Shared Memory</span>
+                    <span class="arch-layer__role">跨服务数据共享</span>
+                </div>
+                <div class="arch-layer__items">
+                    <span class="arch-layer__item">Redis 热数据</span>
+                    <span class="arch-layer__item">SQLite 冷数据</span>
+                    <span class="arch-layer__item">分布式锁</span>
+                    <span class="arch-layer__item">幂等映射</span>
+                </div>
+            </div>
+
+            <div class="arch-layer reveal delay-5">
+                <div class="arch-layer__head">
+                    <span class="arch-layer__name">持久化层</span>
+                    <span class="arch-layer__role">Storage</span>
+                </div>
+                <div class="arch-layer__items">
+                    <span class="arch-layer__item">SQLite (主库)</span>
+                    <span class="arch-layer__item">Redis (缓存)</span>
+                    <span class="arch-layer__item">文件系统 (Markdown)</span>
+                </div>
+            </div>
+        </section>
+    {% elif mode == 'archive' %}
+        <section class="content-feed">
+            <header class="reveal">
+                <h1 class="section-title">归档</h1>
+                <p class="section-subtitle">按月分组的文章与案例。</p>
+            </header>
+            <div class="archive-list">
+                {% for item in archives or [] %}
+                    <span class="archive-pill">{{ item.month }} — {{ item.count }} 篇</span>
+                {% endfor %}
+            </div>
+        </section>
+    {% elif mode == 'tech' %}
+        <section class="content-feed content-feed--tech">
+            <header class="reveal">
+                <h1 class="section-title">核心能力<br>矩阵</h1>
+                <p class="section-subtitle">平台四大核心模块：Planner、Scheduler Center、Agent Registry 与 Shared Memory。</p>
+            </header>
+
+            <div class="tech-grid">
+                {% for item in platform_stack or [] %}
+                    <article class="tech-card reveal delay-{{ (loop.index0 % 4) + 1 }}">
+                        <div class="tech-card__top">
+                            <div class="tech-card__mark" aria-hidden="true">{{ item.mark }}</div>
+                            <h2 class="tech-card__title">{{ item.name }}</h2>
+                            <p class="tech-card__desc">{{ item.description }}</p>
+                            <div class="tech-card__caps">
+                                {% for cap in item.capabilities %}
+                                    <span class="tech-card__cap">{{ cap }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="tech-card__rule" aria-hidden="true"></div>
+                        <div class="tech-card__footer">
+                            <div class="tech-card__archive">
+                                <span>关联案例</span>
+                                <strong>{{ item.case_count }}</strong>
+                            </div>
+                            {% if is_admin is defined and is_admin %}
+                            <div class="tech-card__publish">
+                                <span class="tech-card__dot" aria-hidden="true"></span>
+                                <a class="tech-card__plus" href="{{ item.action_url }}" aria-label="新增案例">+</a>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
+
+            <div class="tech-posts">
+                <header class="tech-posts__header reveal">
+                    <h2 class="section-title tech-posts__title">模块详情</h2>
+                    <p class="section-subtitle tech-posts__subtitle">各模块的职责说明与关联案例。</p>
+                </header>
+
+                <div class="tech-posts__groups">
+                    {% for mod in platform_modules or [] %}
+                        {% set cap = capability_map[mod.id] if capability_map is defined and mod.id in capability_map else {} %}
+                        <section class="tech-post-group reveal delay-{{ (loop.index0 % 4) + 1 }}">
+                            <div class="tech-post-group__head">
+                                <h3>{{ mod.name }}</h3>
+                                <span>{{ mod.description }}</span>
+                            </div>
+                            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                                {% for cap_item in mod.capabilities %}
+                                    <span style="font-size:0.82rem;background:rgba(52,152,219,0.07);color:#3498db;padding:3px 10px;border-radius:16px;">{{ cap_item }}</span>
+                                {% endfor %}
+                            </div>
+                            {% if cap.get('task_types') %}
+                            <div style="margin-bottom:10px;">
+                                <span style="font-size:0.78rem;color:var(--text-muted);">task_type: </span>
+                                {% for tt in cap.task_types %}
+                                    <code style="font-size:0.75rem;background:rgba(0,0,0,0.04);padding:1px 6px;border-radius:4px;margin-right:4px;">{{ tt }}</code>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            {% if cap.get('agent_types') %}
+                            <div style="margin-bottom:10px;">
+                                <span style="font-size:0.78rem;color:var(--text-muted);">Agent: </span>
+                                {% for at in cap.agent_types %}
+                                    <span style="font-size:0.75rem;background:rgba(46,204,113,0.08);color:#27ae60;padding:2px 8px;border-radius:16px;margin-right:4px;">{{ at }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            {% set posts = module_posts[mod.id] if module_posts is defined and mod.id in module_posts else [] %}
+                            {% if posts %}
+                                <p style="color:var(--text-muted);font-size:0.82rem;margin-bottom:8px;">关联案例 ({{ posts|length }})</p>
+                                <div class="tech-post-list">
+                                    {% for post in posts %}
+                                        <a class="tech-post-item" href="{{ url_for('post_detail', post_id=post.id) }}">
+                                            <span class="tech-post-item__title">{{ post.title }}</span>
+                                            <span class="tech-post-item__meta">{{ post.created_at.strftime('%Y-%m-%d') if post.created_at else '' }}</span>
+                                        </a>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <p class="tech-post-group__empty">暂无关联案例。</p>
+                            {% endif %}
+                        </section>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+    {% elif mode == 'demo' %}
+        <section class="content-feed">
+            <header class="reveal">
+                <h1 class="section-title">任务演示</h1>
+                <p class="section-subtitle">从任务提交到结果聚合的完整编排链路演示。</p>
+            </header>
+
+            <section class="exec-flow reveal">
+                <h2 class="exec-flow__title">执行流程</h2>
+                <p class="exec-flow__subtitle">一次完整的任务编排执行链路。</p>
+                <div class="exec-flow__chain">
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">1</span>
+                        <p class="exec-flow__step-name">任务输入</p>
+                        <p class="exec-flow__step-desc">用户提交任务目标与参数</p>
+                    </div>
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">2</span>
+                        <p class="exec-flow__step-name">Planner 拆解</p>
+                        <p class="exec-flow__step-desc">智能拆解为可执行子任务</p>
+                    </div>
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">3</span>
+                        <p class="exec-flow__step-name">依赖调度</p>
+                        <p class="exec-flow__step-desc">Scheduler 编排依赖与并发</p>
+                    </div>
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">4</span>
+                        <p class="exec-flow__step-name">Agent 执行</p>
+                        <p class="exec-flow__step-desc">按 task_type 路由到 Agent</p>
+                    </div>
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">5</span>
+                        <p class="exec-flow__step-name">结果聚合</p>
+                        <p class="exec-flow__step-desc">收集子任务结果并聚合输出</p>
+                    </div>
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">6</span>
+                        <p class="exec-flow__step-name">共享记忆</p>
+                        <p class="exec-flow__step-desc">沉淀到 Shared Memory 供后续复用</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="reveal delay-1" style="margin-top:36px;">
+                <h2 style="font-size:1.3rem;font-weight:800;margin-bottom:4px;">演示说明</h2>
+                <p style="color:var(--text-muted);margin-bottom:20px;">以下展示了平台从投递任务到获取结果的完整过程。</p>
+
+                <div class="arch-layer">
+                    <div class="arch-layer__head">
+                        <span class="arch-layer__name">Step 1 — 投递任务</span>
+                    </div>
+                    <div style="font-family:monospace;font-size:0.85rem;background:#f8f9fa;padding:12px 16px;border-radius:12px;">
+                        POST /api/internal/scheduler/tasks<br>
+                        {<br>
+                        &nbsp;&nbsp;"task_type": "comment.moderate",<br>
+                        &nbsp;&nbsp;"payload": { "comment_id": 42, "text": "..." }<br>
+                        }
+                    </div>
+                </div>
+
+                <div class="arch-layer">
+                    <div class="arch-layer__head">
+                        <span class="arch-layer__name">Step 2 — Scheduler Center 调度</span>
+                    </div>
+                    <div style="font-size:0.88rem;line-height:1.8;">
+                        <span style="background:rgba(52,152,219,0.08);padding:2px 10px;border-radius:12px;">PENDING</span>
+                        &rarr;
+                        <span style="background:rgba(46,204,113,0.08);padding:2px 10px;border-radius:12px;">RUNNING</span>
+                        &rarr; 按 task_type 路由到 Comment Agent
+                    </div>
+                </div>
+
+                <div class="arch-layer">
+                    <div class="arch-layer__head">
+                        <span class="arch-layer__name">Step 3 — Agent 执行</span>
+                    </div>
+                    <div style="font-family:monospace;font-size:0.85rem;background:#f8f9fa;padding:12px 16px;border-radius:12px;">
+                        POST /api/internal/agent/run &rarr; Comment Agent<br>
+                        &rarr; 审核评论内容<br>
+                        &rarr; 写入审核结果到 Shared Memory
+                    </div>
+                </div>
+
+                <div class="arch-layer">
+                    <div class="arch-layer__head">
+                        <span class="arch-layer__name">Step 4 — 结果聚合</span>
+                    </div>
+                    <div style="font-family:monospace;font-size:0.85rem;background:#f8f9fa;padding:12px 16px;border-radius:12px;">
+                        Scheduler 收集执行结果<br>
+                        {<br>
+                        &nbsp;&nbsp;"status": "succeeded",<br>
+                        &nbsp;&nbsp;"result": { "approved": true, "score": 0.92 }<br>
+                        }
+                    </div>
+                </div>
+
+                <div class="arch-layer">
+                    <div class="arch-layer__head">
+                        <span class="arch-layer__name">Step 5 — Shared Memory 沉淀</span>
+                    </div>
+                    <div style="font-family:monospace;font-size:0.85rem;background:#f8f9fa;padding:12px 16px;border-radius:12px;">
+                        mempool.set("audit:comment:42", { "approved": true, "score": 0.92 })<br>
+                        &rarr; 后续任务可通过 mempool.get() 复用
+                    </div>
+                </div>
+            </section>
+
+            <hr style="margin:36px 0;border:0;border-top:1px solid var(--border-color);">
+
+            <section class="reveal delay-2">
+                <h2 style="font-size:1.3rem;font-weight:800;margin-bottom:8px;">在线体验</h2>
+                <p style="color:var(--text-muted);margin-bottom:16px;">提交一个演示任务，观察从提交到完成的完整流程。</p>
+
+                <div class="arch-layer" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                    <select id="demo_task_type" style="padding:8px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:0.9rem;">
+                        <option value="demo.echo">demo.echo（模拟任务）</option>
+                        <option value="comment.moderate">comment.moderate（评论审核）</option>
+                        <option value="audit.draft">audit.draft（草稿审核）</option>
+                    </select>
+                    <button id="demo_submit_btn" onclick="submitDemoTask()" style="padding:8px 20px;background:var(--accent,#3498db);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;">提交任务</button>
+                    <span id="demo_status" style="font-size:0.85rem;color:var(--text-muted);"></span>
+                </div>
+
+                <div id="demo_output" class="arch-layer" style="display:none;margin-top:12px;">
+                    <div id="demo_logs" style="font-family:monospace;font-size:0.82rem;background:#f8f9fa;padding:12px 16px;border-radius:12px;max-height:300px;overflow-y:auto;"></div>
+                </div>
+            </section>
+        </section>
+
+        <script>
+        let pollTimer = null;
+
+        async function submitDemoTask() {
+            const btn = document.getElementById('demo_submit_btn');
+            const statusEl = document.getElementById('demo_status');
+            const outputEl = document.getElementById('demo_output');
+            const logsEl = document.getElementById('demo_logs');
+            const taskType = document.getElementById('demo_task_type').value;
+
+            btn.disabled = true;
+            btn.textContent = '提交中...';
+            statusEl.textContent = '';
+            outputEl.style.display = 'block';
+            logsEl.innerHTML = '<div>正在提交任务...</div>';
+
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+
+            try {
+                const resp = await fetch('/api/demo/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ task_type: taskType })
+                });
+                const data = await resp.json();
+                const taskId = data.task_id;
+                const mode = data.mode || 'mock';
+
+                logsEl.innerHTML = `<div>任务已提交 (mode: ${mode})</div><div style="color:var(--text-muted);">task_id: ${taskId}</div>`;
+                statusEl.innerHTML = `<span style="color:#3498db;">&circlearrowright; 轮询中...</span>`;
+                btn.textContent = '轮询中...';
+
+                pollTimer = setInterval(async () => {
+                    try {
+                        const r = await fetch(`/api/demo/status/${taskId}`);
+                        const s = await r.json();
+                        const status = s.status;
+                        const color = status === 'succeeded' ? '#27ae60' : status === 'failed' ? '#e74c3c' : '#3498db';
+
+                        const logLines = (s.logs || []).map(l => `<div>[<span style="color:${color}">${status}</span>] ${escapeHtml(l)}</div>`).join('');
+                        logsEl.innerHTML = logLines;
+
+                        if (status === 'succeeded') {
+                            clearInterval(pollTimer);
+                            pollTimer = null;
+                            statusEl.innerHTML = '<span style="color:#27ae60;">&check; 完成</span>';
+                            btn.disabled = false;
+                            btn.textContent = '提交任务';
+                            let resultHtml = '<div style="margin-top:12px;padding:8px 12px;background:rgba(46,204,113,0.08);border-radius:8px;">';
+                            if (s.result) {
+                                resultHtml += `<div><strong>结果：</strong>${escapeHtml(JSON.stringify(s.result))}</div>`;
+                            }
+                            if (s.memory_key) {
+                                resultHtml += `<div style="font-size:0.82rem;color:var(--text-muted);">Shared Memory key: <code>${escapeHtml(s.memory_key)}</code></div>`;
+                            }
+                            resultHtml += '</div>';
+                            logsEl.innerHTML += resultHtml;
+                        } else if (status === 'failed') {
+                            clearInterval(pollTimer);
+                            pollTimer = null;
+                            statusEl.innerHTML = '<span style="color:#e74c3c;">&cross; 失败</span>';
+                            btn.disabled = false;
+                            btn.textContent = '提交任务';
+                        }
+                    } catch (e) {
+                        clearInterval(pollTimer);
+                        pollTimer = null;
+                        statusEl.innerHTML = '<span style="color:#e74c3c;">&cross; 轮询错误</span>';
+                        btn.disabled = false;
+                        btn.textContent = '提交任务';
+                    }
+                }, 1000);
+            } catch (e) {
+                logsEl.innerHTML = `<div style="color:#e74c3c;">提交失败: ${escapeHtml(e.message)}</div>`;
+                statusEl.textContent = '提交失败';
+                btn.disabled = false;
+                btn.textContent = '提交任务';
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        </script>
+    {% else %}
+        <section class="content-feed">
+            <header class="reveal">
+                <h1 class="section-title">Multi-Agent<br>Task Orchestration</h1>
+                <p class="section-subtitle">
+                    支持 Planner、任务拆解、任务依赖、结果聚合与共享记忆的可扩展执行平台<br>
+                    <small>基于 FastAPI 的多 Agent 任务编排平台</small>
+                </p>
+            </header>
+
+            <!-- 执行流程 -->
+            <section class="exec-flow reveal">
+                <h2 class="exec-flow__title">执行流程</h2>
+                <p class="exec-flow__subtitle">从任务输入到共享记忆沉淀的完整编排链路。</p>
+                <div class="exec-flow__chain">
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">1</span>
+                        <p class="exec-flow__step-name">任务输入</p>
+                        <p class="exec-flow__step-desc">用户提交任务目标与参数</p>
+                    </div>
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">2</span>
+                        <p class="exec-flow__step-name">Planner 拆解</p>
+                        <p class="exec-flow__step-desc">智能拆解为可执行子任务</p>
+                    </div>
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">3</span>
+                        <p class="exec-flow__step-name">依赖调度</p>
+                        <p class="exec-flow__step-desc">Scheduler 编排依赖与并发</p>
+                    </div>
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">4</span>
+                        <p class="exec-flow__step-name">Agent 执行</p>
+                        <p class="exec-flow__step-desc">按 task_type 路由到对应 Agent</p>
+                    </div>
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">5</span>
+                        <p class="exec-flow__step-name">结果聚合</p>
+                        <p class="exec-flow__step-desc">收集子任务结果并聚合输出</p>
+                    </div>
+                    <div class="exec-flow__step">
+                        <span class="exec-flow__step-number">6</span>
+                        <p class="exec-flow__step-name">共享记忆</p>
+                        <p class="exec-flow__step-desc">沉淀到 Shared Memory 供后续复用</p>
+                    </div>
+                </div>
+            </section>
+
+            <div class="articles-grid">
+                {% if featured_posts is defined and featured_posts %}
+                    {% for post in featured_posts %}
+                        <a href="{{ url_for('post_detail', post_id=post.id) }}" class="article-card reveal delay-{{ (loop.index0 % 4) + 1 }}">
+                            {% if post.image_path %}
+                                <div class="card-image-wrapper">
+                                    {% set image_name = post.image_path.rsplit('/', 1)[-1].rsplit('\\', 1)[-1] %}
+                                    <img src="{{ url_for('static_images', path=image_name) }}" alt="{{ post.title }}">
+                                </div>
+                            {% endif %}
+                            <div class="card-content">
+                                <div class="card-meta">
+                                    <span class="card-category">案例</span>
+                                    <span class="card-date">{{ post.created_at.strftime('%Y-%m-%d') if post.created_at else '' }}</span>
+                                </div>
+                                <h2 class="card-title">{{ post.title }}</h2>
+                                <p class="card-excerpt">{{ post.content[:140] if post.content else '' }}</p>
+                            </div>
+                        </a>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            {% if mode == 'list' and total_pages is defined and total_pages > 1 %}
+            <div class="pagination">
+                {% if has_prev %}
+                    <a class="pagination-btn" href="{{ pagination_base }}{{ page - 1 }}">上一页</a>
+                {% else %}
+                    <span class="pagination-btn is-disabled">上一页</span>
+                {% endif %}
+                <span class="pagination-info">第 {{ page }} 页 / 共 {{ total_pages }} 页</span>
+                {% if has_next %}
+                    <a class="pagination-btn" href="{{ pagination_base }}{{ page + 1 }}">下一页</a>
+                {% else %}
+                    <span class="pagination-btn is-disabled">下一页</span>
+                {% endif %}
+            </div>
+            {% endif %}
+        </section>
+
+        <aside class="sidebar">
+            <div class="sidebar-widget reveal delay-1">
+                <h3 class="widget-title">平台简介</h3>
+                <p class="widget-text">
+                    Ado_Jk Multi-Agent Orchestration Platform 是一个基于 FastAPI 的多 Agent 任务编排平台。集成调度中心、Agent 注册发现、异步任务分发与共享记忆池，支持从任务拆解到结果聚合的完整执行链路。
+                </p>
+                <a class="btn-outline" href="/architecture">了解架构</a>
+            </div>
+        </aside>
+    {% endif %}
+</main>
+
+<footer class="footer">
+    <div class="container footer-content">
+        <p>@2026 Ado_Jk Multi-Agent Orchestration Platform. Powered by FastAPI, Scheduler Center &amp; Shared Memory.</p>
+        <div class="footer-links">
+            <a href="https://github.com/duxiaokk" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a href="/about">关于平台</a>
+        </div>
+    </div>
+</footer>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', path='js/home.js') }}"></script>
+{% endblock %}

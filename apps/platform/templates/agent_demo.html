@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多 Agent 任务编排平台演示</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+            padding: 20px;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 24px; color: #2c3e50; }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .card h2 { font-size: 18px; margin-bottom: 12px; color: #34495e; }
+        .form-row { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+        input, select, textarea {
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            flex: 1;
+            min-width: 200px;
+        }
+        textarea { width: 100%; min-height: 80px; resize: vertical; }
+        button {
+            padding: 10px 20px;
+            background: #3498db;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        button:hover { background: #2980b9; }
+        button:disabled { background: #bdc3c7; cursor: not-allowed; }
+        .output {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 12px;
+            min-height: 120px;
+            white-space: pre-wrap;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 14px;
+            line-height: 1.7;
+            color: #2c3e50;
+        }
+        .output:empty::before {
+            content: "（等待输出...）";
+            color: #95a5a6;
+        }
+        .spinner {
+            display: inline-block;
+            width: 14px; height: 14px;
+            border: 2px solid #fff;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .status { font-size: 12px; color: #7f8c8d; margin-top: 6px; }
+        .error { color: #e74c3c; }
+        .success { color: #27ae60; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>多 Agent 任务编排平台 —— 智能体演示</h1>
+
+        <!-- 任务拆解与规划 -->
+        <div class="card">
+            <h2> 任务拆解与规划</h2>
+            <div class="form-row">
+                <input type="text" id="outlineTopic" placeholder="任务目标，如：构建 FastAPI 中间件实现 JWT 认证" value="FastAPI 中间件实现 JWT 认证">
+                <select id="outlineStyle">
+                    <option value="tutorial">教程型</option>
+                    <option value="opinion">观点型</option>
+                    <option value="review">评测型</option>
+                    <option value="deep_dive">深入型</option>
+                </select>
+                <button id="btnOutline" onclick="runOutline()">生成规划</button>
+            </div>
+            <div class="status" id="statusOutline"></div>
+            <div class="output" id="outputOutline"></div>
+        </div>
+
+        <!-- 内容优化 -->
+        <div class="card">
+            <h2> 内容优化与润色</h2>
+            <textarea id="polishText" placeholder="粘贴要优化的内容...">今天我想讲讲fastapi怎么连数据库。首先你要装sqlalchemy，然后写个models.py</textarea>
+            <div class="form-row">
+                <select id="polishTone">
+                    <option value="professional">专业型</option>
+                    <option value="casual">轻松型</option>
+                    <option value="technical">极客型</option>
+                </select>
+                <button id="btnPolish" onclick="runPolish()">润色</button>
+            </div>
+            <div class="status" id="statusPolish"></div>
+            <div class="output" id="outputPolish"></div>
+        </div>
+
+        <!-- 数据分析 -->
+        <div class="card">
+            <h2> 平台数据分析</h2>
+            <button id="btnAnalyze" onclick="runAnalyze()">开始分析</button>
+            <div class="status" id="statusAnalyze"></div>
+            <div class="output" id="outputAnalyze"></div>
+        </div>
+
+        <!-- 推荐策略 -->
+        <div class="card">
+            <h2> 推荐编排策略</h2>
+            <button id="btnRecommend" onclick="runRecommend()">获取推荐</button>
+            <div class="status" id="statusRecommend"></div>
+            <div class="output" id="outputRecommend"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/agent-stream-client.js"></script>
+    <script>
+        const client = new AgentStreamClient();
+
+        function setLoading(id, loading) {
+            const btn = document.getElementById(id);
+            btn.disabled = loading;
+            if (loading) {
+                btn.innerHTML = '处理中<span class="spinner"></span>';
+            } else {
+                btn.innerHTML = btn.getAttribute('data-label') || btn.innerText.replace('处理中', '').trim();
+            }
+        }
+
+        // 保存原始按钮文字
+        ['btnOutline', 'btnPolish', 'btnAnalyze', 'btnRecommend'].forEach(id => {
+            const btn = document.getElementById(id);
+            btn.setAttribute('data-label', btn.innerText);
+        });
+
+        async function runOutline() {
+            const topic = document.getElementById('outlineTopic').value;
+            const style = document.getElementById('outlineStyle').value;
+            const out = document.getElementById('outputOutline');
+            const status = document.getElementById('statusOutline');
+            out.textContent = '';
+            status.textContent = '';
+            status.className = 'status';
+            setLoading('btnOutline', true);
+
+            await client.streamOutline(topic, style, {
+                onMeta: (m) => { status.textContent = `任务目标：${m.topic} / 风格：${m.style}`; },
+                onChunk: (text) => { out.textContent += text; },
+                onDone: () => { setLoading('btnOutline', false); status.className = 'status success'; status.textContent += '  完成'; },
+                onError: (err) => { setLoading('btnOutline', false); status.className = 'status error'; status.textContent = '错误：' + err.message; },
+            });
+        }
+
+        async function runPolish() {
+            const text = document.getElementById('polishText').value;
+            const tone = document.getElementById('polishTone').value;
+            const out = document.getElementById('outputPolish');
+            const status = document.getElementById('statusPolish');
+            out.textContent = '';
+            status.textContent = '';
+            status.className = 'status';
+            setLoading('btnPolish', true);
+
+            await client.streamPolish(text, tone, {
+                onMeta: (m) => { status.textContent = `语气：${m.tone}`; },
+                onChunk: (text) => { out.textContent += text; },
+                onDone: () => { setLoading('btnPolish', false); status.className = 'status success'; status.textContent += '  完成'; },
+                onError: (err) => { setLoading('btnPolish', false); status.className = 'status error'; status.textContent = '错误：' + err.message; },
+            });
+        }
+
+        async function runAnalyze() {
+            const out = document.getElementById('outputAnalyze');
+            const status = document.getElementById('statusAnalyze');
+            out.textContent = '';
+            status.textContent = '';
+            status.className = 'status';
+            setLoading('btnAnalyze', true);
+
+            await client.streamAnalyze({
+                onChunk: (text) => { out.textContent += text; },
+                onDone: () => { setLoading('btnAnalyze', false); status.className = 'status success'; status.textContent = '  完成'; },
+                onError: (err) => { setLoading('btnAnalyze', false); status.className = 'status error'; status.textContent = '错误：' + err.message; },
+            });
+        }
+
+        async function runRecommend() {
+            const out = document.getElementById('outputRecommend');
+            const status = document.getElementById('statusRecommend');
+            out.textContent = '';
+            status.textContent = '';
+            status.className = 'status';
+            setLoading('btnRecommend', true);
+
+            await client.streamRecommend(null, {
+                onChunk: (text) => { out.textContent += text; },
+                onDone: () => { setLoading('btnRecommend', false); status.className = 'status success'; status.textContent = '  完成'; },
+                onError: (err) => { setLoading('btnRecommend', false); status.className = 'status error'; status.textContent = '错误：' + err.message; },
+            });
+        }
+    </script>
+</body>
+</html>

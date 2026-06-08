@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}发布文章 | Ado_Jk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/create.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="create-shell container">
+    <section class="create-grid">
+        <div class="create-card create-form-card">
+            <div class="create-head">
+                <h1>发布文章</h1>
+                <p>先用 AI 生成草稿，再继续手动润色和发布。</p>
+            </div>
+
+            <form class="create-form" method="post" action="/handle-create-post" enctype="multipart/form-data">
+                <label>
+                    <span>标题</span>
+                    <input type="text" name="title" id="post-title" required maxlength="255" placeholder="输入文章标题">
+                </label>
+                <label>
+                    <span>技术标签（可选）</span>
+                    <select name="tech_tag">
+                        <option value="">不归类到技术栈</option>
+                        {% for tag in tech_tags or [] %}
+                            <option value="{{ tag }}" {% if preselected_tech_tag == tag %}selected{% endif %}>{{ tag }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span>封面图片</span>
+                    <input type="file" name="image" accept="image/*">
+                </label>
+                <label>
+                    <span>正文</span>
+                    <textarea name="content" id="post-content" rows="14" required placeholder="写下文章内容"></textarea>
+                </label>
+                <div class="create-actions">
+                    <a class="create-back" href="/">返回首页</a>
+                    <button type="submit" class="create-submit">发布文章</button>
+                </div>
+            </form>
+        </div>
+
+        <aside class="create-card ai-panel" aria-label="AI 智能体">
+            <div class="create-head">
+                <h2>AI 编排智能体</h2>
+                <p>输入任务目标和风格，一键生成可编辑草稿。</p>
+            </div>
+
+            <div class="ai-form">
+                <label>
+                    <span>主题</span>
+                    <input type="text" id="ai-topic" placeholder="例如: FastAPI 中间件设计">
+                </label>
+                <label>
+                    <span>风格</span>
+                    <select id="ai-style">
+                        <option value="tutorial">教程</option>
+                        <option value="opinion">观点</option>
+                        <option value="review">评测</option>
+                        <option value="deep_dive">深度</option>
+                    </select>
+                </label>
+                <button type="button" class="ai-generate" id="ai-generate-btn">一键生成</button>
+            </div>
+
+            <div class="ai-status" id="ai-status">等待生成草稿。</div>
+            <div class="ai-output">
+                <div class="ai-output__label">预览</div>
+                <div class="ai-output__title" id="ai-output-title">标题会显示在这里</div>
+                <div class="ai-output__summary" id="ai-output-summary">摘要会显示在这里</div>
+                <pre class="ai-output__content" id="ai-output-content">正文会显示在这里</pre>
+            </div>
+        </aside>
+    </section>
+</main>
+
+<script src="{{ url_for('static', path='js/agent-stream-client.js') }}"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const client = new AgentStreamClient();
+        const topicEl = document.getElementById("ai-topic");
+        const styleEl = document.getElementById("ai-style");
+        const btn = document.getElementById("ai-generate-btn");
+        const statusEl = document.getElementById("ai-status");
+        const titleEl = document.getElementById("ai-output-title");
+        const summaryEl = document.getElementById("ai-output-summary");
+        const contentEl = document.getElementById("ai-output-content");
+        const postTitleEl = document.getElementById("post-title");
+        const postContentEl = document.getElementById("post-content");
+
+        const setLoading = (loading) => {
+            btn.disabled = loading;
+            btn.textContent = loading ? "生成中..." : "一键生成";
+        };
+
+        btn.addEventListener("click", async () => {
+            const topic = topicEl.value.trim();
+            const style = styleEl.value;
+            if (!topic) {
+                statusEl.textContent = "请先输入主题。";
+                return;
+            }
+
+            setLoading(true);
+            statusEl.textContent = "正在调用 AI 草稿接口...";
+            titleEl.textContent = "";
+            summaryEl.textContent = "";
+            contentEl.textContent = "";
+
+            let buffer = "";
+            await client.streamDraft(topic, style, {
+                onMeta: (meta) => {
+                    statusEl.textContent = `主题: ${meta.topic || topic} / 风格: ${meta.style || style}`;
+                },
+                onChunk: (text) => {
+                    buffer += text;
+                    contentEl.textContent = buffer;
+                },
+                onDone: () => {
+                    setLoading(false);
+                    statusEl.textContent = "草稿已生成，可直接修改后发布。";
+                    const lines = buffer.split("\n").map((line) => line.trim()).filter(Boolean);
+                    titleEl.textContent = lines[0] || `${topic}的草稿标题`;
+                    summaryEl.textContent = lines[1] || "AI 草稿已完成。";
+                    postTitleEl.value = titleEl.textContent;
+                    postContentEl.value = buffer || "";
+                },
+                onError: (err) => {
+                    setLoading(false);
+                    statusEl.textContent = `生成失败: ${err.message}`;
+                },
+            });
+        });
+    });
+</script>
+{% endblock %}

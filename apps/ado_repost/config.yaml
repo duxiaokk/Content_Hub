@@ -1,0 +1,10 @@
+fetchers:
+  lookback_hours: 720
+  persist_cursors: true
+  max_retries: 3
+  timeout_seconds: 15.0
+  x_enabled: false
+  youtube_enabled: true
+  instagram_enabled: false
+  youtube_api_key: "AIzaSyCsfzvv28g4C7hRenQI7ElSbT6Wl9Hgsxg"
+  youtube_channel_id: "UCln9P4Qm3-EAY4aiEPmRwEA"

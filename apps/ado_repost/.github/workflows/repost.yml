@@ -1,0 +1,91 @@
+name: Ado Repost Agent
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (skip push)"
+        required: false
+        default: "false"
+        type: boolean
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  fetch-and-push:
+    name: Fetch · Process · Push
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Run agent
+        env:
+          ADO_DISCORD_ENABLED: ${{ vars.ADO_DISCORD_ENABLED != '' && vars.ADO_DISCORD_ENABLED || 'false' }}
+          ADO_DISCORD_WEBHOOK_URL: ${{ secrets.ADO_DISCORD_WEBHOOK_URL }}
+          ADO_SERVERCHAN_ENABLED: ${{ vars.ADO_SERVERCHAN_ENABLED != '' && vars.ADO_SERVERCHAN_ENABLED || 'false' }}
+          ADO_SERVERCHAN_SENDKEY: ${{ secrets.ADO_SERVERCHAN_SENDKEY }}
+          ADO_FETCH_LOOKBACK_HOURS: ${{ vars.ADO_FETCH_LOOKBACK_HOURS || '24' }}
+          ADO_FETCH_PERSIST_CURSORS: ${{ vars.ADO_FETCH_PERSIST_CURSORS || 'true' }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            ado-repost --dry-run --config config.yaml
+          else
+            ado-repost --config config.yaml
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ado-repost-data
+          path: data/
+          retention-days: 3
+
+      - name: Notify on failure
+        if: failure() && vars.ADO_DISCORD_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "[Ado Repost] 工作流执行失败 :warning:",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Ado Repost Agent 执行失败* :warning:\n> Run: <${{ github.server_url }}<${{ github.repository }}/actions/runs/${{ github.run_id }}|查看日志>\n> Branch: `${{ github.ref_name }}`\n> Time: `${{ github.event.head_commit.timestamp }}`"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ vars.ADO_DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Ado Repost Agent 执行摘要" >> $GITHUB_STEP_SUMMARY
+          echo "- 触发时间：\`$(date -u '+%Y-%m-%dT%H:%M:%SZ')\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 运行ID: \`${{ github.run_id }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ -f data/run_result.json ]; then
+            echo "- 执行状态：\`$(python3 -c "import json; print(json.load(open('data/run_result.json'))['status'])" 2>/dev/null || echo 'unknown')\`" >> $GITHUB_STEP_SUMMARY
+            echo "- 新动态数：\`$(python3 -c "import json; print(json.load(open('data/run_result.json')).get('new_items', 0))" 2>/dev/null || echo '0')\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 执行状态：\`no_result\`" >> $GITHUB_STEP_SUMMARY
+          fi

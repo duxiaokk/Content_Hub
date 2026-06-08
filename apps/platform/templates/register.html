@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Register | Ado_Jk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/auth.css') }}">
+{% endblock %}
+
+{% block nav_auth_actions %}{% endblock %}
+
+{% block body_class %}auth-page{% endblock %}
+
+{% block content %}
+<main class="auth-shell">
+    <section class="auth-card auth-card--split">
+        <div class="auth-card__visual auth-card__visual--register">
+            <p class="auth-kicker">Create account</p>
+            <h1>Create your account</h1>
+            <p class="auth-subtitle">After registering you can comment, like, and choose an avatar.</p>
+
+            <div class="auth-avatar auth-avatar--feature">
+                <span class="auth-avatar__label">Avatar</span>
+                <div class="auth-avatar__body">
+                    <div class="auth-avatar__preview">
+                        <img data-avatar-preview alt="Avatar preview" hidden>
+                        <span data-avatar-placeholder class="auth-avatar__placeholder-badge">A</span>
+                    </div>
+                    <label class="auth-avatar__upload">
+                        <input type="file" name="avatar" accept="image/*" form="register-form" data-avatar-input>
+                        <span>Upload avatar</span>
+                    </label>
+                    <p class="auth-avatar__hint" data-avatar-feedback>Preview will appear here after you choose an image.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="auth-card__form-panel">
+            <form class="auth-form" method="post" action="/register" enctype="multipart/form-data" id="register-form">
+                <input type="hidden" name="next" value="{{ request.query_params.get('next', '') }}">
+                <label>
+                    <span>Username</span>
+                    <input type="text" name="username" required autocomplete="username" minlength="3" placeholder="Enter username">
+                </label>
+                <label>
+                    <span>Password</span>
+                    <div class="input-wrapper auth-password-field">
+                        <input type="password" name="password" required autocomplete="new-password" minlength="6" placeholder="Enter password" data-password-input>
+                        <button type="button" class="password-toggle auth-password-toggle" data-password-toggle aria-label="Show password" aria-pressed="false">
+                            <i data-lucide="eye" class="eye-open"></i>
+                            <i data-lucide="eye-off" class="eye-closed"></i>
+                            <span class="password-toggle__text">Show</span>
+                        </button>
+                    </div>
+                </label>
+                <label>
+                    <span>Email (optional)</span>
+                    <input type="email" name="email" autocomplete="email" placeholder="Enter a common email">
+                </label>
+                <p class="field-hint">Use a common email so password recovery is easier later.</p>
+                <button type="submit" class="auth-button">Register</button>
+            </form>
+
+            <p class="auth-note">Already have an account? <a href="/login">Log in</a></p>
+            <p id="register-status" class="auth-status"></p>
+        </div>
+    </section>
+</main>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', path='js/register.js') }}"></script>
+{% endblock %}

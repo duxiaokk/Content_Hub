@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}{{ post.title or '未命名文章' }} | Ado_Jk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/detail.css') }}">
+{% endblock %}
+
+{% block content %}
+<main
+    class="detail-shell container"
+    data-post-id="{{ post.id }}"
+    data-is-admin="{{ '1' if is_admin else '0' }}"
+    data-liked="{{ '1' if post_liked else '0' }}"
+    data-like-count="{{ post.like_count or 0 }}"
+>
+    <article class="detail-card">
+        {% if post.image_path %}
+        <div class="detail-cover">
+            {% set image_name = post.image_path.rsplit('/', 1)[-1].rsplit('\\', 1)[-1] %}
+            <img
+                src="{{ url_for('static_images', path=image_name) }}"
+                alt="{{ post.title or '文章封面' }}"
+            >
+        </div>
+        {% endif %}
+
+        <div class="detail-body">
+            <a class="detail-back" href="/">Back</a>
+
+            <div class="detail-meta">
+                <span>作者：{{ author_name or 'Ado_Jk' }}</span>
+                <span>发布时间：{{ post.created_at.strftime('%Y-%m-%d %H:%M') if post.created_at else '未知' }}</span>
+            </div>
+
+            <h1 class="detail-title">{{ post.title or '未命名文章' }}</h1>
+
+            <div class="detail-toolbar">
+                <button
+                    class="detail-action detail-like {% if post_liked %}is-active{% endif %}"
+                    type="button"
+                    data-like-button
+                    aria-pressed="{{ 'true' if post_liked else 'false' }}"
+                >
+                    <span data-like-label>{% if post_liked %}Liked{% else %}Like{% endif %}</span>
+                    <strong data-like-count>{{ post.like_count or 0 }}</strong>
+                </button>
+                {% if is_admin %}
+                <button class="detail-action detail-delete" type="button" data-delete-button>Delete</button>
+                {% endif %}
+            </div>
+
+            <div class="detail-content">{{ post.content or '暂无正文内容' }}</div>
+        </div>
+    </article>
+
+    <section class="comments-panel">
+        <div class="comments-head">
+            <h2>Comments</h2>
+            <p>Post comments and like replies.</p>
+        </div>
+
+        <form class="comment-form" id="comment-form">
+            <textarea name="content" rows="4" maxlength="2000" placeholder="Write a comment..." required></textarea>
+            <div class="comment-form__actions">
+                <span class="comment-form__hint">Submit to post</span>
+                <button type="submit" class="comment-submit">Post Comment</button>
+            </div>
+        </form>
+
+        <div class="comments-list" id="comments-list">
+            <div class="comments-empty">Loading comments...</div>
+        </div>
+    </section>
+</main>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', path='js/detail.js') }}"></script>
+{% endblock %}

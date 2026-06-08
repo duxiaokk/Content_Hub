@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="560" viewBox="0 0 1280 560" role="img" aria-label="Request flow diagram">
+  <defs>
+    <style>
+      .box { fill: #ffffff; stroke: #1f2937; stroke-width: 3; rx: 18; }
+      .title { font: 700 22px Arial, sans-serif; fill: #0f172a; }
+      .text { font: 16px Arial, sans-serif; fill: #334155; }
+      .arrow { stroke: #2563eb; stroke-width: 5; fill: none; marker-end: url(#arrowhead); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#2563eb"/>
+    </marker>
+  </defs>
+  <rect width="1280" height="560" fill="#f8fafc"/>
+  <text x="70" y="70" class="title">Request flow</text>
+  <text x="70" y="102" class="text">Browser request -> FastAPI router -> service layer -> CRUD -> database</text>
+
+  <rect x="70" y="180" width="200" height="130" class="box"/>
+  <text x="120" y="225" class="title">Browser</text>
+  <text x="105" y="258" class="text">Templates / JS</text>
+  <text x="92" y="282" class="text">Comments / likes</text>
+
+  <rect x="320" y="180" width="200" height="130" class="box"/>
+  <text x="360" y="225" class="title">FastAPI</text>
+  <text x="352" y="258" class="text">routers/*.py</text>
+  <text x="355" y="282" class="text">Auth / posts / comments</text>
+
+  <rect x="570" y="180" width="200" height="130" class="box"/>
+  <text x="624" y="225" class="title">Service</text>
+  <text x="612" y="258" class="text">Business logic</text>
+  <text x="602" y="282" class="text">Validation and policy</text>
+
+  <rect x="820" y="180" width="200" height="130" class="box"/>
+  <text x="873" y="225" class="title">CRUD</text>
+  <text x="864" y="258" class="text">SQLAlchemy Session</text>
+  <text x="842" y="282" class="text">Create / read / update</text>
+
+  <rect x="1070" y="180" width="140" height="130" class="box"/>
+  <text x="1095" y="225" class="title">DB</text>
+  <text x="1086" y="258" class="text">SQLite</text>
+  <text x="1082" y="282" class="text">or MySQL</text>
+
+  <path d="M270 245 L320 245" class="arrow"/>
+  <path d="M520 245 L570 245" class="arrow"/>
+  <path d="M770 245 L820 245" class="arrow"/>
+  <path d="M1020 245 L1070 245" class="arrow"/>
+
+  <rect x="320" y="380" width="680" height="110" rx="18" fill="#dbeafe" stroke="#93c5fd" stroke-width="2"/>
+  <text x="360" y="425" class="title">Validation layer</text>
+  <text x="360" y="456" class="text">CSRF, permission checks, pagination, and rate limiting are enforced before state changes.</text>
+</svg>

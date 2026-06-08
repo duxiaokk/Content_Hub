@@ -1,0 +1,24 @@
+﻿captured_at=2026-06-02T21:04:55.2392179+08:00
+--- netstat LISTENING 9010/8020 ---
+
+  TCP    127.0.0.1:8020         0.0.0.0:0              LISTENING       48068
+  TCP    127.0.0.1:9010         0.0.0.0:0              LISTENING       37040
+
+
+--- process snapshot (python/uvicorn) ---
+
+   Id ProcessName         CPU WorkingSet StartTime         Path                                                                              
+   -- -----------         --- ---------- ---------         ----                                                                              
+46288 python      3349.015625  258981888 2026/6/2 20:54:16 C:\Users\Administrator\AppData\Local\Programs\Python\Python314\python.exe         
+48344 python         81.71875  124325888 2026/6/2 20:53:45 C:\Users\Administrator\AppData\Local\Programs\Python\Python314\python.exe         
+38216 python        72.484375  125616128 2026/6/2 20:53:45 C:\Users\Administrator\AppData\Local\Programs\Python\Python314\python.exe         
+30088 python          54.0625  126627840 2026/6/2 20:53:45 C:\Users\Administrator\AppData\Local\Programs\Python\Python314\python.exe         
+42784 python        49.984375  135770112 2026/6/2 20:53:43 C:\Users\Administrator\AppData\Local\Programs\Python\Python314\python.exe         
+48068 python             16.5  301731840 2026/6/2 20:32:44 C:\Users\Administrator\AppData\Local\Programs\Python\Python314\python.exe         
+41292 python         6.890625   86568960 2026/6/2 20:53:56 C:\Users\Administrator\AppData\Local\Programs\Python\Python314\python.exe         
+37040 python         0.796875   33284096 2026/6/2 20:53:43 C:\Users\Administrator\AppData\Local\Programs\Python\Python314\python.exe         
+49060 uvicorn        0.046875    7217152 2026/6/2 20:32:44 C:\Users\Administrator\AppData\Local\Programs\Python\Python314\Scripts\uvicorn.exe
+46292 uvicorn        0.015625    7618560 2026/6/2 20:53:43 C:\Users\Administrator\AppData\Local\Programs\Python\Python314\Scripts\uvicorn.exe
+
+
+

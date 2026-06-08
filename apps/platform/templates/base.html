@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Ado_Jk Multi-Agent Orchestration Platform{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/home.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/auth.css') }}">
+    <style>
+        [hidden] { display: none; }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}" data-authenticated="{{ '1' if user else '0' }}" data-username="{{ user or '' }}">
+    <nav class="navbar" id="navbar">
+        <div class="container nav-content">
+            <a class="logo" href="/">Ado<span>_</span>Jk</a>
+            <div class="nav-links">
+                <a href="/">平台概览</a>
+                <a href="/top">核心能力</a>
+                <a href="/demo">任务演示</a>
+                <a href="/architecture">架构设计</a>
+                <a href="/about">关于平台</a>
+            </div>
+            {% block nav_auth_actions %}
+            <div class="auth-actions">
+                {% if is_admin is defined and is_admin %}
+                    <a class="auth-btn auth-btn--primary" href="/create-post">发布案例</a>
+                {% endif %}
+                {% if user %}
+                    <div class="auth-profile" data-user-menu>
+                        <button class="auth-profile__button" type="button" data-user-menu-toggle aria-expanded="false" aria-label="打开用户菜单">
+                            {% if current_user_avatar_path is defined and current_user_avatar_path %}
+                                <img class="auth-profile__avatar" src="{{ url_for('static_images', path=current_user_avatar_path) }}" alt="{{ user }}">
+                            {% else %}
+                                <span class="auth-profile__avatar auth-profile__avatar--fallback">{{ user[:1] }}</span>
+                            {% endif %}
+                        </button>
+                        <div class="auth-profile__menu" data-user-menu-panel hidden>
+                            <div class="auth-profile__identity">
+                                <button class="auth-profile__menu-avatar-btn" type="button" data-avatar-display data-avatar-change-trigger aria-label="更换头像">
+                                    {% if current_user_avatar_path is defined and current_user_avatar_path %}
+                                        <img class="auth-profile__menu-avatar" data-current-avatar-image src="{{ url_for('static_images', path=current_user_avatar_path) }}" alt="{{ user }}">
+                                    {% else %}
+                                        <span class="auth-profile__menu-avatar auth-profile__menu-avatar--fallback" data-current-avatar-fallback>{{ user[:1] }}</span>
+                                    {% endif %}
+                                </button>
+                                <div class="auth-profile__name">{{ user }}</div>
+                            </div>
+                            <button class="auth-profile__change" type="button" data-avatar-change-trigger>更换头像</button>
+                            <a class="auth-profile__logout" href="/logout">退出登录</a>
+                            <input type="file" accept="image/*" hidden data-profile-avatar-input>
+                            <p class="auth-profile__status" data-profile-avatar-status></p>
+                        </div>
+                    </div>
+                {% else %}
+                    <a class="auth-btn" href="/login">登录</a>
+                    <a class="auth-btn auth-btn--primary" href="/register-page">注册</a>
+                {% endif %}
+            </div>
+            {% endblock %}
+        </div>
+    </nav>
+
+    {% block content %}{% endblock %}
+
+    {% block extra_scripts %}{% endblock %}
+    <script src="{{ url_for('static', path='js/auth.js') }}"></script>
+</body>
+</html>

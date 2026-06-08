@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Home page preview">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e2e8f0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect x="90" y="55" width="1100" height="610" rx="28" fill="#0b1220" opacity="0.8"/>
+  <rect x="110" y="85" width="1060" height="45" rx="18" fill="#111827"/>
+  <circle cx="145" cy="107" r="8" fill="#ef4444"/>
+  <circle cx="171" cy="107" r="8" fill="#f59e0b"/>
+  <circle cx="197" cy="107" r="8" fill="#22c55e"/>
+  <text x="250" y="114" font-family="Arial, sans-serif" font-size="20" fill="#cbd5e1">Ado_Jk Blog</text>
+  <rect x="110" y="150" width="640" height="460" rx="28" fill="url(#card)"/>
+  <rect x="780" y="150" width="390" height="220" rx="28" fill="#111827"/>
+  <rect x="780" y="390" width="390" height="220" rx="28" fill="#111827"/>
+  <text x="150" y="215" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#0f172a">FastAPI Blog</text>
+  <text x="150" y="255" font-family="Arial, sans-serif" font-size="18" fill="#334155">Posts, comments, likes, and live updates.</text>
+  <rect x="150" y="300" width="240" height="46" rx="23" fill="#2563eb"/>
+  <text x="198" y="330" font-family="Arial, sans-serif" font-size="18" fill="#ffffff">Read latest posts</text>
+  <rect x="150" y="380" width="260" height="86" rx="18" fill="#e2e8f0"/>
+  <rect x="430" y="380" width="260" height="86" rx="18" fill="#e2e8f0"/>
+  <rect x="150" y="486" width="540" height="86" rx="18" fill="#e2e8f0"/>
+  <text x="812" y="205" font-family="Arial, sans-serif" font-size="24" fill="#f8fafc">System snapshot</text>
+  <text x="812" y="244" font-family="Arial, sans-serif" font-size="18" fill="#cbd5e1">Auth, posts, comments, and SSE</text>
+  <text x="812" y="290" font-family="Arial, sans-serif" font-size="18" fill="#cbd5e1">SQLite / MySQL</text>
+  <text x="812" y="322" font-family="Arial, sans-serif" font-size="18" fill="#cbd5e1">Alembic migrations</text>
+  <text x="812" y="432" font-family="Arial, sans-serif" font-size="24" fill="#f8fafc">Developer tools</text>
+  <text x="812" y="471" font-family="Arial, sans-serif" font-size="18" fill="#cbd5e1">Ruff, pytest, tasks.py</text>
+  <text x="812" y="503" font-family="Arial, sans-serif" font-size="18" fill="#cbd5e1">Swagger UI at /docs</text>
+</svg>

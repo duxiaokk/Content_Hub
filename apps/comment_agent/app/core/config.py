@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     )
     mempool_namespace: str = "comment-agent"
     mempool_redis_url: str = "redis://localhost:6379/0"
-    mempool_sqlite_path: str = "./shared_mempool.db"
+    mempool_sqlite_path: str = "./shared_memory.db"
     mempool_default_ttl_seconds: int | None = 3600
     mempool_serializer: str = "json"
     mempool_redis_key_prefix: str = "shared_memory:"

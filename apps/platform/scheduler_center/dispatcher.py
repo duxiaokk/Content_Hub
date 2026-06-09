@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import time
@@ -21,6 +22,14 @@ from scheduler_center.models import (
     SchedulerTaskEvent,
     SchedulerTaskLog,
 )
+
+from scheduler_center import _ensure_stdlib_platform
+from workflow_engine.pipeline.linear_pipeline import LinearPipelineRunner, LinearPipelineSpec
+from workflow_engine.pipeline.payloads import LinearPipelinePayload
+from workflow_engine.registry.bootstrap import build_default_registry
+from workflow_engine.registry.static_registry import registry
+
+_ensure_stdlib_platform()
 
 
 class TaskStatus:
@@ -48,6 +57,7 @@ class SchedulerDispatcher:
         self._running_lock = threading.Lock()
         self._rr_lock = threading.Lock()
         self._rr_index = 0
+        self._registry_built = False
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -291,6 +301,16 @@ class SchedulerDispatcher:
 
             payload = self._safe_json_loads(task.payload_json) or {}
             attempt_no = int(task.attempt_count) + 1
+
+            if task.task_type == "content.pipeline.linear":
+                self._execute_local_linear_pipeline(
+                    db=db,
+                    task=task,
+                    attempt_no=attempt_no,
+                    payload=payload,
+                )
+                return
+
             agent = self._choose_agent(db, task.task_type)
 
             attempt = SchedulerTaskAttempt(
@@ -451,6 +471,108 @@ class SchedulerDispatcher:
             self._mark_retry_or_fail(db, task, attempt, int(attempt.attempt_no), str(exc), retryable=retryable)
         finally:
             db.close()
+
+    def _execute_local_linear_pipeline(
+        self,
+        *,
+        db: Session,
+        task: SchedulerTask,
+        attempt_no: int,
+        payload: dict[str, Any],
+    ) -> None:
+        trace_id = task.trace_id or str(uuid.uuid4())
+        attempt = SchedulerTaskAttempt(
+            task_id=task.id,
+            attempt_no=attempt_no,
+            agent="local-linear-pipeline",
+            trace_id=trace_id,
+            status=TaskStatus.RUNNING,
+            started_at=_utcnow(),
+            request_url="local://workflow_engine/pipeline/linear",
+            request_json=json.dumps(payload, ensure_ascii=False)[:20000],
+        )
+        db.add(attempt)
+        task.last_agent = "local-linear-pipeline"
+        task.updated_at = _utcnow()
+        self._append_event(
+            db,
+            task_id=task.id,
+            trace_id=trace_id,
+            event_type="ATTEMPT_STARTED",
+            from_status=TaskStatus.RUNNING,
+            to_status=TaskStatus.RUNNING,
+            attempt_no=attempt_no,
+            message="executing local linear pipeline",
+        )
+        db.commit()
+        db.refresh(attempt)
+
+        try:
+            if not self._registry_built:
+                build_default_registry()
+                self._registry_built = True
+
+            parsed = LinearPipelinePayload.from_dict(payload)
+            parsed.process_context.run_id = parsed.process_context.run_id or task.id
+            runner = LinearPipelineRunner(registry)
+            spec = LinearPipelineSpec(
+                fetcher_name=parsed.fetcher_name,
+                processor_name=parsed.processor_name,
+                publisher_name=parsed.publisher_name,
+                fetch_request=parsed.fetch_request,
+                process_context=parsed.process_context,
+                publish_target=parsed.publish_target,
+            )
+            result_obj = asyncio.run(runner.run(spec))
+
+            now = _utcnow()
+            attempt.status = TaskStatus.SUCCEEDED
+            attempt.finished_at = now
+            attempt.response_text = json.dumps(result_obj, ensure_ascii=False)[:20000]
+            task.status = TaskStatus.SUCCEEDED
+            task.attempt_count = attempt_no
+            task.result_json = json.dumps({"items": result_obj}, ensure_ascii=False)
+            task.last_error = None
+            task.next_run_at = None
+            task.updated_at = now
+            self._append_log(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                level="INFO",
+                message=f"local linear pipeline succeeded on attempt {attempt_no}",
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="ATTEMPT_FINISHED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="STATUS_CHANGED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            db.commit()
+        except Exception as exc:
+            attempt.retryable = 0
+            self._mark_retry_or_fail(
+                db,
+                task,
+                attempt,
+                attempt_no,
+                str(exc),
+                retryable=False,
+            )
 
     def _mark_failed(
         self,

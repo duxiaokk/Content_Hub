@@ -16,7 +16,7 @@ from shared_memory.errors import LockTimeout
 def _expected_internal_token() -> str:
     return (
         os.getenv("CONTENT_BRIDGE_INTERNAL_TOKEN")
-        os.getenv("ADO_REPOST_INTERNAL_TOKEN")
+        or os.getenv("ADO_REPOST_INTERNAL_TOKEN")
         or os.getenv("SCHEDULER_INTERNAL_TOKEN")
         or "local-dev-scheduler-token"
     )

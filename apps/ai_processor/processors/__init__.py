@@ -1,0 +1,1 @@
+"""AI processor registry package."""

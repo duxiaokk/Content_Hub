@@ -12,6 +12,12 @@
 - AuthResponse: 身份验证响应数据类
 """
 from schemas.agent import AgentDraftIngestRequest, AgentDraftResponse, AgentDraftUpdateRequest
+from schemas.pipeline import (
+    LinearPipelineFetchRequest,
+    LinearPipelineProcessContext,
+    LinearPipelinePublishTarget,
+    LinearPipelineRunRequest,
+)
 from schemas.post import ArticleCreate, PostBase, PostCreate
 from schemas.user import AuthResponse, UserBase, UserCreate, UserLogin, UserOut
 
@@ -21,6 +27,10 @@ __all__ = [
     "AgentDraftResponse",
     "AgentDraftUpdateRequest",
     "AuthResponse",
+    "LinearPipelineFetchRequest",
+    "LinearPipelineProcessContext",
+    "LinearPipelinePublishTarget",
+    "LinearPipelineRunRequest",
     "PostBase",
     "PostCreate",
     "UserBase",

@@ -1,0 +1,1 @@
+"""Publisher adapter registry package."""

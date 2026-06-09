@@ -14,12 +14,16 @@
 """
 from crud.crud_post import create_post, delete_post, get_post, get_posts, update_post_like
 from crud.crud_user import get_user_by_username
+from crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
 
 __all__ = [
+    "create_content_item",
     "create_post",
     "delete_post",
+    "get_content_item_by_source",
     "get_post",
     "get_posts",
     "get_user_by_username",
+    "update_content_item",
     "update_post_like",
 ]

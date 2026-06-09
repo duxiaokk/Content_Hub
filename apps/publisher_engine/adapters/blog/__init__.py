@@ -1,0 +1,1 @@
+"""Blog publisher adapter package."""

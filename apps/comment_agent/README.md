@@ -18,7 +18,7 @@ Third-party AI comment agent service for blog platforms.
    pip install -r requirements.txt
    ```
 
-   `requirements.txt` 已包含本地共享记忆池依赖：`shared-memory @ file:///D:/Python/Personal%20Blog/shared_memory`。
+   If you use the workspace bootstrap script, it will also install the local `shared_memory` package for this service.
 
 2. Start the API server:
 

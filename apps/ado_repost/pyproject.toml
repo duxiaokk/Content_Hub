@@ -1,5 +1,5 @@
 [project]
-name = "ado-repost"
+name = "content-bridge"
 version = "0.1.0"
 description = "Ado 动态自动搬运 Agent（Twitter/X · YouTube · Instagram → Discord · Server酱）"
 readme = "README.md"
@@ -8,7 +8,6 @@ dependencies = [
     "fastapi>=0.100.0",
     "httpx>=0.27.0",
     "pyyaml>=6.0",
-    "shared-memory @ file:///D:/Python/content_hub/libs/shared_memory",
     "uvicorn>=0.23.0",
 ]
 
@@ -19,6 +18,7 @@ dev = [
 ]
 
 [project.scripts]
+content-bridge = "content_bridge.main:main"
 ado-repost = "ado_repost.main:main"
 
 [tool.ruff]

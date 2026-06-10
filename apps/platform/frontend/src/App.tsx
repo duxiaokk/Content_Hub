@@ -8,6 +8,9 @@ import HomePage from './pages/Home/HomePage';
 import PostDetailPage from './pages/PostDetail/PostDetailPage';
 import PostCreatePage from './pages/PostCreate/PostCreatePage';
 import AgentConsolePage from './pages/AgentConsole/AgentConsolePage';
+import SourcesPage from './pages/Sources/SourcesPage';
+import FetchRunsPage from './pages/FetchRuns/FetchRunsPage';
+import ContentQueuePage from './pages/ContentQueue/ContentQueuePage';
 
 export default function App() {
   const token = useAuthStore((s) => s.token);
@@ -33,6 +36,9 @@ export default function App() {
         }
       >
         <Route path="/" element={<HomePage />} />
+        <Route path="/sources" element={<SourcesPage />} />
+        <Route path="/fetch-runs" element={<FetchRunsPage />} />
+        <Route path="/content-queue" element={<ContentQueuePage />} />
         <Route path="/post/:id" element={<PostDetailPage />} />
         <Route path="/create" element={<PostCreatePage />} />
         <Route path="/agent" element={<AgentConsolePage />} />

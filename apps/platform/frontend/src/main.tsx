@@ -42,7 +42,7 @@ createRoot(rootElement).render(
         }}
       >
         <AntApp>
-          <BrowserRouter>
+          <BrowserRouter basename="/console">
             <App />
           </BrowserRouter>
         </AntApp>

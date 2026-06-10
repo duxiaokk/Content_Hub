@@ -16,18 +16,20 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.observability import init_observability
-from routers import ai, agent, auth, comments, demo, internal_tasks, pages, posts
+from routers import ai, agent, comments, demo, internal_tasks, pages, posts
 from routers.api_v1 import api_v1
-from database import check_db_health
+from database import Base, check_db_health, engine
 from web_deps import get_or_set_csrf_cookie
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.timeout import TimeoutMiddleware
@@ -35,6 +37,8 @@ from middleware.timeout import TimeoutMiddleware
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 IMAGE_DIR = os.path.join(BASE_DIR, "image")
+FRONTEND_DIST_DIR = os.path.join(BASE_DIR, "frontend", "dist")
+FRONTEND_ASSETS_DIR = os.path.join(FRONTEND_DIST_DIR, "assets")
 
 os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(IMAGE_DIR, exist_ok=True)
@@ -42,12 +46,20 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
 app = FastAPI(
     title="Ado_Jk Multi-Agent Orchestration Platform",
     version="1.0.0",
     docs_url=None,
     redoc_url=None,
     openapi_url="/openapi.json",
+    lifespan=lifespan,
     description="""
 ## Ado_Jk 多 Agent 内容编排平台
 
@@ -71,13 +83,14 @@ app = FastAPI(
 {"code": 0, "data": {...}, "message": "ok"}
 ```
 
-错误码: `0`成功, `4xxxx`客户端错误, `5xxxx`服务端错误, `6xxxx`业务状态
+错误码: `0`成功, `4xxxx`客户端错误, `5xxx`服务端错误, `6xxxx`业务状态
 """,
 )
 app.mount("/static/images", StaticFiles(directory=IMAGE_DIR), name="static_images")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+if os.path.isdir(FRONTEND_ASSETS_DIR):
+    app.mount("/console-assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="console_assets")
 
-app.include_router(auth.router)
 app.include_router(comments.router)
 app.include_router(posts.router)
 app.include_router(pages.router)
@@ -102,7 +115,7 @@ async def auth_exception_handler(request: Request, exc: HTTPException):
         accept = (request.headers.get("accept") or "").lower()
         wants_html = "text/html" in accept or "*/*" in accept
         if request.method.upper() == "GET" and wants_html:
-            return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+            return RedirectResponse(url="/console", status_code=status.HTTP_302_FOUND)
 
         detail = (
             exc.detail
@@ -193,3 +206,21 @@ async def csrf_cookie_middleware(request: Request, call_next):
     except Exception:
         logger.exception("failed to set csrf cookie")
     return response
+
+
+def _console_index_html() -> str:
+    index_path = os.path.join(FRONTEND_DIST_DIR, "index.html")
+    if not os.path.isfile(index_path):
+        raise HTTPException(status_code=404, detail="console frontend not built")
+    with open(index_path, "r", encoding="utf-8") as file_handle:
+        html = file_handle.read()
+    html = html.replace('src="/console/assets/', 'src="/console-assets/')
+    html = html.replace('href="/console/assets/', 'href="/console-assets/')
+    html = html.replace('href="/vite.svg"', 'href="/static/images/favicon.ico"')
+    return html
+
+
+@app.get("/console", include_in_schema=False)
+@app.get("/console/{full_path:path}", include_in_schema=False)
+def console_spa_entry(full_path: str = ""):
+    return HTMLResponse(_console_index_html())

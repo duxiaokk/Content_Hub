@@ -53,14 +53,14 @@
                                 <div class="auth-profile__name">{{ user }}</div>
                             </div>
                             <button class="auth-profile__change" type="button" data-avatar-change-trigger>更换头像</button>
-                            <a class="auth-profile__logout" href="/logout">退出登录</a>
+                            <a class="auth-profile__logout" href="/console">退出登录</a>
                             <input type="file" accept="image/*" hidden data-profile-avatar-input>
                             <p class="auth-profile__status" data-profile-avatar-status></p>
                         </div>
                     </div>
                 {% else %}
-                    <a class="auth-btn" href="/login">登录</a>
-                    <a class="auth-btn auth-btn--primary" href="/register-page">注册</a>
+                    <a class="auth-btn" href="/console">登录</a>
+                    <a class="auth-btn auth-btn--primary" href="/console">注册</a>
                 {% endif %}
             </div>
             {% endblock %}

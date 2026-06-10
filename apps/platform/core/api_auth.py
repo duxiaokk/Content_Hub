@@ -20,11 +20,12 @@ from typing import Annotated
 import jwt
 from fastapi import Cookie, Depends, Header, HTTPException, status
 
+from core.config import settings
 from core.error_codes import ErrorCode
 
-SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+SECRET_KEY = settings.secret_key
+ALGORITHM = settings.jwt_algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 
 
 def create_access_token(username: str, expires_delta: timedelta | None = None) -> str:

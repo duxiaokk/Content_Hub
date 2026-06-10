@@ -63,8 +63,8 @@ export default function AgentConsolePage() {
         listOrchestrationRuns(1, 20),
       ]);
       setAgents(Array.isArray(agentRes) ? agentRes : []);
-      setTasks(taskRes.items || []);
-      setRuns(runRes.items || []);
+      setTasks(taskRes?.items || []);
+      setRuns(runRes?.items || []);
     } catch {
       message.error('加载 Agent 数据失败');
     }

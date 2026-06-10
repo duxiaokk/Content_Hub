@@ -63,7 +63,7 @@ export default function PostDetailPage() {
     Promise.all([getPost(postId), listComments(postId)])
       .then(([p, c]) => {
         setPost(p);
-        setComments(c.items || []);
+        setComments(c?.items || []);
       })
       .catch(() => {
         setPost(null);
@@ -142,7 +142,7 @@ export default function PostDetailPage() {
     setCommentLoading(true);
     try {
       const res = await listComments(post.id);
-      setComments(res.items || []);
+      setComments(res?.items || []);
     } catch {
       message.error('加载评论失败');
     } finally {

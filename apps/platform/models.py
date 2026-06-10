@@ -145,6 +145,8 @@ class ContentItem(Base):
     __tablename__ = "content_items"
 
     id = Column(Integer, primary_key=True, index=True)
+    source_config_id = Column(Integer, ForeignKey("source_configs.id"), nullable=True, index=True)
+    fetch_run_id = Column(Integer, ForeignKey("fetch_runs.id"), nullable=True, index=True)
     source_type = Column(String(64), nullable=False, index=True)
     source_id = Column(String(255), nullable=False, index=True)
     source_url = Column(String(1024), nullable=True)
@@ -154,6 +156,10 @@ class ContentItem(Base):
     publish_target = Column(String(128), nullable=True, index=True)
     publish_status = Column(String(32), nullable=False, default="pending", index=True)
     pipeline_status = Column(String(32), nullable=False, default="fetched", index=True)
+    review_status = Column(String(32), nullable=False, default="pending_review", index=True)
+    reviewed_by = Column(String(150), nullable=True, index=True)
+    reviewed_at = Column(DateTime, nullable=True, index=True)
+    draft_post_id = Column(Integer, ForeignKey("posts.id"), nullable=True, index=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     updated_at = Column(
@@ -167,6 +173,83 @@ class ContentItem(Base):
         Index("uq_content_items_source", "source_type", "source_id", unique=True),
         Index("ix_content_items_pipeline_created", "pipeline_status", "created_at"),
         Index("ix_content_items_publish_created", "publish_status", "created_at"),
+        Index("ix_content_items_review_created", "review_status", "created_at"),
+    )
+
+
+class SourceConfig(Base):
+    __tablename__ = "source_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), nullable=False, unique=True, index=True)
+    source_type = Column(String(64), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True, index=True)
+    channels = Column(Text, nullable=True)
+    keywords = Column(Text, nullable=True)
+    lookback_hours = Column(Integer, nullable=False, default=24)
+    item_limit = Column(Integer, nullable=False, default=20)
+    dedup_window_hours = Column(Integer, nullable=False, default=24)
+    config_json = Column(Text, nullable=True)
+    last_cursor = Column(Text, nullable=True)
+    last_run_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    __table_args__ = (
+        Index("ix_source_configs_type_enabled", "source_type", "enabled"),
+    )
+
+
+class FetchRun(Base):
+    __tablename__ = "fetch_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_config_id = Column(Integer, ForeignKey("source_configs.id"), nullable=False, index=True)
+    trigger_mode = Column(String(32), nullable=False, default="manual", index=True)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    task_id = Column(String(64), nullable=True, index=True)
+    trace_id = Column(String(64), nullable=True, index=True)
+    requested_by = Column(String(150), nullable=True, index=True)
+    request_payload = Column(Text, nullable=True)
+    fetched_count = Column(Integer, nullable=False, default=0)
+    inserted_count = Column(Integer, nullable=False, default=0)
+    deduped_count = Column(Integer, nullable=False, default=0)
+    duration_ms = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    finished_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    __table_args__ = (
+        Index("ix_fetch_runs_source_status_created", "source_config_id", "status", "created_at"),
+    )
+
+
+class ReviewDecision(Base):
+    __tablename__ = "review_decisions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content_item_id = Column(Integer, ForeignKey("content_items.id"), nullable=False, index=True)
+    decision = Column(String(32), nullable=False, index=True)
+    reason = Column(Text, nullable=True)
+    operator = Column(String(150), nullable=False, index=True)
+    snapshot_title = Column(String(255), nullable=True)
+    snapshot_content = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+    __table_args__ = (
+        Index("ix_review_decisions_content_created", "content_item_id", "created_at"),
     )
 
 

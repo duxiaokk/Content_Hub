@@ -287,7 +287,7 @@ def build_top_page_data(db: Session, *, username: Optional[str]) -> dict:
             "case_count": module_case_counts.get(mod["id"], 0),
             "action_url": f"/create-post?{urlencode({'tech_tag': action_tag})}"
             if is_admin(username)
-            else "/login",
+            else "/console",
         })
 
     return {

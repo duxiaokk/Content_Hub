@@ -39,12 +39,28 @@ ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "Ado_Jk")
 # ------------------------------------------------------------------
 
 async def get_current_user(request: Request) -> str | None:
-    """从 Cookie 提取当前用户名，失败返回 None。"""
+    """从 Cookie 或 Bearer 头提取当前用户名，失败返回 None。"""
     try:
         from security import get_current_user_from_cookie
         return await get_current_user_from_cookie(request)
     except Exception:
-        return None
+        pass
+
+    # 也尝试从 Bearer Token 提取（SPA 前端通过 localStorage 发送）
+    try:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.removeprefix("Bearer ").strip()
+            if token:
+                from security import decode_token
+                payload = decode_token(token, expected_type="access")
+                username = payload.get("sub")
+                if username:
+                    return str(username)
+    except Exception:
+        pass
+
+    return None
 
 
 async def get_current_user_required(request: Request) -> str:

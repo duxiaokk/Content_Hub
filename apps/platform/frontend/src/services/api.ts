@@ -1,29 +1,32 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../stores/authStore';
 import type {
+  Agent,
+  ApiResponse,
+  Comment,
+  ContentItem,
+  CreateCommentRequest,
+  CreatePostRequest,
+  FetchRun,
   LoginRequest,
   LoginResponse,
-  RegisterRequest,
-  Post,
-  CreatePostRequest,
-  Comment,
-  CreateCommentRequest,
-  User,
-  Agent,
-  SchedulerTask,
   OrchestrationRun,
   PaginatedResponse,
-  ApiResponse,
+  Post,
+  RegisterRequest,
+  SchedulerTask,
+  SourceConfig,
+  SourceConfigPayload,
+  TriggerFetchPayload,
+  User,
 } from '../types';
 
-// ============ 创建 axios 实例 ============
 const apiClient = axios.create({
   baseURL: '/api/v1',
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 });
 
-// ============ 请求拦截器 ============
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = useAuthStore.getState().token;
   if (token !== null) {
@@ -32,59 +35,40 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
-// ============ 响应拦截器 ============
+/** 请求是否是登录/注册（不触发 401 自动跳转） */
+function _isAuthUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  return url.endsWith('/auth/login') || url.endsWith('/auth/register');
+}
+
 apiClient.interceptors.response.use(
   (res) => {
     const body = res.data as ApiResponse<unknown>;
-    if (body !== null && typeof body === 'object' && 'code' in body && (body as ApiResponse<unknown>).code !== undefined && (body as ApiResponse<unknown>).code !== 0) {
-      if (body.code === 40101 || body.code === 40102 || body.code === 40103) {
+    if (
+      body !== null &&
+      typeof body === 'object' &&
+      'code' in body &&
+      body.code !== undefined &&
+      body.code !== 0
+    ) {
+      if (!_isAuthUrl(res.config.url) && (body.code === 40101 || body.code === 40102 || body.code === 40103)) {
         useAuthStore.getState().logout();
-        window.location.href = '/login';
+        window.location.href = '/console/login';
       }
       return Promise.reject(new Error(body.message || '请求失败'));
     }
     return res;
   },
   (err: AxiosError) => {
-    if (err.response?.status === 401) {
+    if (!_isAuthUrl(err.config?.url) && err.response?.status === 401) {
       useAuthStore.getState().logout();
-      window.location.href = '/login';
+      window.location.href = '/console/login';
     }
     const message = err instanceof Error ? err.message : '网络请求失败';
     return Promise.reject(new Error(message));
   }
 );
 
-// ============ 调度器 API 实例 ============
-const schedulerClient = axios.create({
-  baseURL: '/scheduler/api/v1',
-  timeout: 30000,
-  headers: { 'Content-Type': 'application/json' },
-});
-
-schedulerClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = useAuthStore.getState().token;
-  if (token !== null) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-schedulerClient.interceptors.response.use(
-  (res) => {
-    const body = res.data as ApiResponse<unknown>;
-    if (body !== null && typeof body === 'object' && 'code' in body && (body as ApiResponse<unknown>).code !== undefined && (body as ApiResponse<unknown>).code !== 0) {
-      return Promise.reject(new Error(body.message || '请求失败'));
-    }
-    return res;
-  },
-  (err: AxiosError) => {
-    const message = err instanceof Error ? err.message : '网络请求失败';
-    return Promise.reject(new Error(message));
-  }
-);
-
-// ============ 认证 API ============
 export async function login(data: LoginRequest): Promise<LoginResponse> {
   const res = await apiClient.post<ApiResponse<LoginResponse>>('/auth/login', data);
   return res.data.data;
@@ -105,7 +89,6 @@ export async function refreshToken(): Promise<LoginResponse> {
   return res.data.data;
 }
 
-// ============ 文章 API ============
 export async function listPosts(
   page: number = 1,
   pageSize: number = 20,
@@ -144,7 +127,6 @@ export async function unlikePost(id: number): Promise<void> {
   await apiClient.delete(`/posts/${id}/like`);
 }
 
-// ============ 评论 API ============
 export async function listComments(
   postId: number,
   page: number = 1,
@@ -165,58 +147,127 @@ export async function deleteComment(postId: number, commentId: number): Promise<
   await apiClient.delete(`/posts/${postId}/comments/${commentId}`);
 }
 
-// ============ Agent API ============
 export async function listAgents(): Promise<Agent[]> {
-  const res = await schedulerClient.get<ApiResponse<Agent[]>>('/agents');
+  const res = await apiClient.get<ApiResponse<Agent[]>>('/admin/agents');
   return res.data.data;
 }
 
 export async function getAgent(agentKey: string): Promise<Agent> {
-  const res = await schedulerClient.get<ApiResponse<Agent>>(`/agents/${agentKey}`);
+  const res = await apiClient.get<ApiResponse<Agent>>(`/admin/agents/${agentKey}`);
   return res.data.data;
 }
 
-// ============ 调度任务 API ============
 export async function listTasks(
   page: number = 1,
   pageSize: number = 20,
   params?: Record<string, unknown>
 ): Promise<PaginatedResponse<SchedulerTask>> {
-  const res = await schedulerClient.get<ApiResponse<PaginatedResponse<SchedulerTask>>>('/tasks', {
+  const res = await apiClient.get<ApiResponse<PaginatedResponse<SchedulerTask>>>('/admin/tasks', {
     params: { page, page_size: pageSize, ...params },
   });
   return res.data.data;
 }
 
 export async function getTask(taskId: string): Promise<SchedulerTask> {
-  const res = await schedulerClient.get<ApiResponse<SchedulerTask>>(`/tasks/${taskId}`);
+  const res = await apiClient.get<ApiResponse<SchedulerTask>>(`/admin/tasks/${taskId}`);
   return res.data.data;
 }
 
-// ============ 编排运行 API ============
 export async function listOrchestrationRuns(
   page: number = 1,
   pageSize: number = 20
 ): Promise<PaginatedResponse<OrchestrationRun>> {
-  const res = await schedulerClient.get<ApiResponse<PaginatedResponse<OrchestrationRun>>>('/orchestrations', {
+  const res = await apiClient.get<ApiResponse<PaginatedResponse<OrchestrationRun>>>('/admin/orchestrations', {
     params: { page, page_size: pageSize },
   });
   return res.data.data;
 }
 
 export async function getOrchestrationRun(runId: string): Promise<OrchestrationRun> {
-  const res = await schedulerClient.get<ApiResponse<OrchestrationRun>>(`/orchestrations/${runId}`);
+  const res = await apiClient.get<ApiResponse<OrchestrationRun>>(`/admin/orchestrations/${runId}`);
   return res.data.data;
 }
 
-// ============ 健康检查 API ============
 export async function healthCheck(): Promise<{ status: string }> {
-  const res = await schedulerClient.get<ApiResponse<{ status: string }>>('/health');
+  const res = await apiClient.get<ApiResponse<{ status: string }>>('/admin/health');
   return res.data.data;
 }
 
 export async function systemStats(): Promise<Record<string, unknown>> {
   const res = await apiClient.get<ApiResponse<Record<string, unknown>>>('/admin/stats');
+  return res.data.data;
+}
+
+export async function listSourceConfigs(): Promise<SourceConfig[]> {
+  const res = await apiClient.get<ApiResponse<SourceConfig[]>>('/console/sources');
+  return res.data.data;
+}
+
+export async function createSourceConfig(data: SourceConfigPayload): Promise<SourceConfig> {
+  const res = await apiClient.post<ApiResponse<SourceConfig>>('/console/sources', data);
+  return res.data.data;
+}
+
+export async function updateSourceConfig(id: number, data: Partial<SourceConfigPayload>): Promise<SourceConfig> {
+  const res = await apiClient.put<ApiResponse<SourceConfig>>(`/console/sources/${id}`, data);
+  return res.data.data;
+}
+
+export async function triggerSourceRun(
+  id: number,
+  data: TriggerFetchPayload
+): Promise<{ fetch_run_id: number; task_id?: string; trace_id?: string; status: string }> {
+  const res = await apiClient.post<
+    ApiResponse<{ fetch_run_id: number; task_id?: string; trace_id?: string; status: string }>
+  >(`/console/sources/${id}/run`, data);
+  return res.data.data;
+}
+
+export async function listFetchRuns(
+  page: number = 1,
+  pageSize: number = 20,
+  params?: Record<string, unknown>
+): Promise<PaginatedResponse<FetchRun>> {
+  const res = await apiClient.get<ApiResponse<PaginatedResponse<FetchRun>>>('/console/fetch-runs', {
+    params: { page, page_size: pageSize, ...params },
+  });
+  return res.data.data;
+}
+
+export async function listConsoleContentItems(
+  page: number = 1,
+  pageSize: number = 20,
+  params?: Record<string, unknown>
+): Promise<PaginatedResponse<ContentItem>> {
+  const res = await apiClient.get<ApiResponse<PaginatedResponse<ContentItem>>>('/console/content-items', {
+    params: { page, page_size: pageSize, ...params },
+  });
+  return res.data.data;
+}
+
+export async function getConsoleContentItem(id: number): Promise<ContentItem> {
+  const res = await apiClient.get<ApiResponse<ContentItem>>(`/console/content-items/${id}`);
+  return res.data.data;
+}
+
+export async function approveConsoleContentItem(id: number, reason?: string): Promise<ContentItem> {
+  const res = await apiClient.post<ApiResponse<ContentItem>>(`/console/content-items/${id}/approve`, { reason });
+  return res.data.data;
+}
+
+export async function rejectConsoleContentItem(id: number, reason?: string): Promise<ContentItem> {
+  const res = await apiClient.post<ApiResponse<ContentItem>>(`/console/content-items/${id}/reject`, { reason });
+  return res.data.data;
+}
+
+export async function publishConsoleContentItem(
+  id: number,
+  data?: { title?: string; content?: string; tech_tags?: string }
+): Promise<{ content_item: ContentItem; post_id: number }> {
+  const res = await apiClient.post<ApiResponse<{ content_item: ContentItem; post_id: number }>>(
+    `/console/content-items/${id}/publish-to-post`,
+    data || {}
+  );
   return res.data.data;
 }
 

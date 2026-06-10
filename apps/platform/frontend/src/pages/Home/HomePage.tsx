@@ -20,7 +20,7 @@ export default function HomePage() {
     setLoading(true);
     try {
       const res = await listPosts(p, pageSize);
-      setPosts(res.items || []);
+      setPosts(res?.items || []);
       setTotal(res.total || 0);
     } catch {
       message.error('加载文章列表失败，请稍后重试');

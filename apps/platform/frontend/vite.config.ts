@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
+  base: '/console/',
   plugins: [react()],
   resolve: {
     alias: {
@@ -14,10 +15,6 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/scheduler': {
-        target: 'http://localhost:8010',
         changeOrigin: true,
       },
       '/openapi.json': {

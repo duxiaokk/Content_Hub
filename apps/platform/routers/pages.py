@@ -70,28 +70,10 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 
-@router.get("/", response_class=HTMLResponse)
-def home(
-    request: Request,
-    db=Depends(get_db),
-    search: str = "",
-    month: Optional[str] = None,
-    sort: Optional[str] = None,
-    user: Optional[str] = Depends(get_optional_user),
-    page: int = 1,
-    page_size: int = 6,
-):
-    context = build_home_page_data(
-        db,
-        username=user,
-        search=search,
-        month=month,
-        sort=sort,
-        page=page,
-        page_size=page_size,
-    )
-    context.update({"request": request, "user": user, "mode": "list"})
-    return templates.TemplateResponse(request, "index.html", context)
+@router.get("/", response_class=RedirectResponse)
+def home():
+    """根路径重定向到控制台 SPA。"""
+    return RedirectResponse(url="/console", status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/archive", response_class=HTMLResponse)

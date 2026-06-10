@@ -78,6 +78,67 @@ export interface OrchestrationRun {
   updated_at: string;
 }
 
+export interface SourceConfig {
+  id: number;
+  name: string;
+  source_type: string;
+  enabled: boolean;
+  channels: string[];
+  keywords: string[];
+  lookback_hours: number;
+  item_limit: number;
+  dedup_window_hours: number;
+  // 前端表单会把 config 当作“任意 JSON 对象”编辑；用 any 避免与 antd Form 的递归 Partial 类型冲突
+  config: Record<string, any>;
+  last_cursor?: Record<string, unknown> | string | null;
+  last_run_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface FetchRun {
+  id: number;
+  source_config_id: number;
+  source_name: string;
+  source_type: string;
+  trigger_mode: string;
+  status: string;
+  task_id?: string | null;
+  trace_id?: string | null;
+  requested_by?: string | null;
+  request_payload: Record<string, unknown>;
+  fetched_count: number;
+  inserted_count: number;
+  deduped_count: number;
+  duration_ms?: number | null;
+  error_message?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ContentItem {
+  id: number;
+  source_config_id?: number | null;
+  fetch_run_id?: number | null;
+  source_type: string;
+  source_id: string;
+  source_url?: string | null;
+  title: string;
+  raw_content?: string | null;
+  processed_content?: string | null;
+  pipeline_status: string;
+  review_status: string;
+  publish_status: string;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  draft_post_id?: number | null;
+  error_message?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 // ============ 分页响应 ============
 export interface PaginatedResponse<T> {
   items: T[];
@@ -113,6 +174,25 @@ export interface CreatePostRequest {
 
 export interface CreateCommentRequest {
   content: string;
+}
+
+export interface SourceConfigPayload {
+  name: string;
+  source_type: string;
+  enabled: boolean;
+  channels: string[];
+  keywords: string[];
+  lookback_hours: number;
+  item_limit: number;
+  dedup_window_hours: number;
+  // 同上：config 允许任意 JSON，避免 TS2345/TS2322（unknown 无法赋值给 {}）
+  config: Record<string, any>;
+}
+
+export interface TriggerFetchPayload {
+  lookback_hours?: number;
+  item_limit?: number;
+  dry_run?: boolean;
 }
 
 export interface ApiResponse<T> {

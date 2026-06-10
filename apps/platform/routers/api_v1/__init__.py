@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from routers.api_v1.ai import router as ai_router
 from routers.api_v1.auth import router as auth_router
 from routers.api_v1.comments import router as comments_router
+from routers.api_v1.console import router as console_router
 from routers.api_v1.posts import router as posts_router
 from routers.api_v1.admin import router as admin_router
 
@@ -19,3 +20,4 @@ api_v1.include_router(posts_router)
 api_v1.include_router(comments_router)
 api_v1.include_router(ai_router)
 api_v1.include_router(admin_router)
+api_v1.include_router(console_router)

@@ -1,23 +1,28 @@
 import { useMemo } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Avatar, Dropdown, Typography, Space } from 'antd';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Avatar, Dropdown, Layout, Menu, Space, Typography } from 'antd';
 import {
-  HomeOutlined,
+  DatabaseOutlined,
   EditOutlined,
-  RobotOutlined,
+  FileSearchOutlined,
+  HomeOutlined,
   LogoutOutlined,
+  RobotOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { useAuthStore } from '../../stores/authStore';
 import type { MenuProps } from 'antd';
+import { useAuthStore } from '../../stores/authStore';
 
 const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
 
 const navItems: MenuProps['items'] = [
   { key: '/', icon: <HomeOutlined />, label: '首页' },
-  { key: '/create', icon: <EditOutlined />, label: '写文章' },
-  { key: '/agent', icon: <RobotOutlined />, label: 'Agent 控制台' },
+  { key: '/sources', icon: <DatabaseOutlined />, label: '数据源' },
+  { key: '/fetch-runs', icon: <FileSearchOutlined />, label: '采集历史' },
+  { key: '/content-queue', icon: <EditOutlined />, label: '审核队列' },
+  { key: '/agent', icon: <RobotOutlined />, label: '任务调度' },
+  { key: '/create', icon: <EditOutlined />, label: '创建文章' },
 ];
 
 export default function AppLayout() {
@@ -27,9 +32,10 @@ export default function AppLayout() {
 
   const selectedKey = useMemo(() => {
     const path = location.pathname;
-    if (path === '/') return '/';
-    if (path.startsWith('/create')) return '/create';
-    if (path.startsWith('/agent')) return '/agent';
+    const exactMatch = navItems?.find((item) => item && 'key' in item && item.key === path);
+    if (exactMatch && typeof exactMatch.key === 'string') {
+      return exactMatch.key;
+    }
     if (path.startsWith('/post/')) return '/';
     return '/';
   }, [location.pathname]);
@@ -37,16 +43,16 @@ export default function AppLayout() {
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'info',
+      disabled: true,
       label: (
         <div style={{ padding: '4px 0' }}>
-          <Text strong>{username || '未知用户'}</Text>
+          <Text strong>{username || 'Unknown User'}</Text>
           <br />
           <Text type="secondary" style={{ fontSize: 12 }}>
             {email || role || ''}
           </Text>
         </div>
       ),
-      disabled: true,
     },
     { type: 'divider' },
     {
@@ -69,37 +75,30 @@ export default function AppLayout() {
           alignItems: 'center',
           justifyContent: 'space-between',
           background: '#fff',
-          padding: '0 40px',
+          padding: '0 32px',
           boxShadow: '0 1px 4px rgba(0, 0, 0, 0.08)',
           position: 'sticky',
           top: 0,
-          zIndex: 100,
+          zIndex: 10,
         }}
       >
-        {/* Logo + 导航 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
           <Text
             strong
-            style={{
-              fontSize: 20,
-              color: '#1677ff',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
+            style={{ fontSize: 20, color: '#1677ff', cursor: 'pointer', whiteSpace: 'nowrap' }}
             onClick={() => navigate('/')}
           >
-            Ado_Jk
+            Content Hub
           </Text>
           <Menu
             mode="horizontal"
             selectedKeys={[selectedKey]}
             items={navItems}
             onClick={({ key }) => navigate(key)}
-            style={{ borderBottom: 'none', minWidth: 320 }}
+            style={{ borderBottom: 'none', minWidth: 560 }}
           />
         </div>
 
-        {/* 用户菜单 */}
         <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" arrow>
           <Space style={{ cursor: 'pointer' }}>
             <Avatar size="small" icon={<UserOutlined />} style={{ backgroundColor: '#1677ff' }} />
@@ -108,12 +107,12 @@ export default function AppLayout() {
         </Dropdown>
       </Header>
 
-      <Content style={{ padding: '24px 40px', maxWidth: 1200, margin: '0 auto', width: '100%' }}>
+      <Content style={{ padding: '24px 32px', maxWidth: 1400, margin: '0 auto', width: '100%' }}>
         <Outlet />
       </Content>
 
       <Footer style={{ textAlign: 'center', color: '#999', background: '#fafafa' }}>
-        Ado_Jk Platform &copy; {new Date().getFullYear()} &mdash; Multi-Agent Content Orchestration
+        Content Hub Console &copy; {new Date().getFullYear()}
       </Footer>
     </Layout>
   );

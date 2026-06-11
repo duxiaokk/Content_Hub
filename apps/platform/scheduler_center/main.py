@@ -12,7 +12,6 @@ from scheduler_center.database import Base, engine
 from scheduler_center.dispatcher import SchedulerDispatcher
 from scheduler_center.router import router
 from scheduler_center.orchestration_router import router as orchestration_router
-from scheduler_center.orchestration_models import Base as OrchBase
 
 
 dispatcher = SchedulerDispatcher()
@@ -26,7 +25,6 @@ def _check_db() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
-    OrchBase.metadata.create_all(bind=engine)
     if not scheduler_settings.scheduler_disable_dispatcher:
         dispatcher.start()
     try:

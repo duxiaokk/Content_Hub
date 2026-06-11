@@ -33,6 +33,24 @@ except Exception:  # pragma: no cover - fallback for older/local envs
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_SQLITE_DB_PATH = BASE_DIR / "blog.db"
+
+
+def _normalize_sqlite_url(database_url: str) -> str:
+    if not database_url.startswith("sqlite:///"):
+        return database_url
+
+    sqlite_path = database_url.removeprefix("sqlite:///")
+    if sqlite_path in {"", ":memory:"}:
+        return database_url
+
+    candidate_path = Path(sqlite_path)
+    if not candidate_path.is_absolute():
+        candidate_path = (BASE_DIR / candidate_path).resolve()
+    else:
+        candidate_path = candidate_path.resolve()
+
+    return f"sqlite:///{str(candidate_path).replace(os.sep, '/')}"
 
 
 def _parse_bool(value: str | None, default: bool = False) -> bool:
@@ -65,6 +83,7 @@ class Settings(BaseSettings):
         )
 
     database_url: Optional[str] = None
+    sqlite_db_path: Optional[str] = None
     use_mysql: bool = False
     db_user: Optional[str] = None
     db_password: Optional[str] = None
@@ -114,12 +133,15 @@ class Settings(BaseSettings):
     @property
     def resolved_database_url(self) -> str:
         if self.database_url:
-            return self.database_url
+            return _normalize_sqlite_url(self.database_url)
         if self.use_mysql:
             if not self.db_user or not self.db_password or not self.db_name:
                 raise ValueError("MySQL configuration requires DB_USER, DB_PASSWORD and DB_NAME")
             return f"mysql+pymysql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
-        sqlite_db_path = BASE_DIR / "blog.db"
+        sqlite_db_path = Path(self.sqlite_db_path).expanduser() if self.sqlite_db_path else DEFAULT_SQLITE_DB_PATH
+        if not sqlite_db_path.is_absolute():
+            sqlite_db_path = BASE_DIR / sqlite_db_path
+        sqlite_db_path = sqlite_db_path.resolve()
         return f"sqlite:///{str(sqlite_db_path).replace(os.sep, '/')}"
 
 
@@ -127,6 +149,7 @@ def _load_fallback_settings() -> Settings:
     return Settings.model_validate(
         {
             "database_url": os.getenv("DATABASE_URL") or None,
+            "sqlite_db_path": os.getenv("SQLITE_DB_PATH") or None,
             "use_mysql": _parse_bool(os.getenv("USE_MYSQL"), False),
             "db_user": os.getenv("DB_USER") or None,
             "db_password": os.getenv("DB_PASSWORD") or None,

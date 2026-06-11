@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from workflow_engine.registry.contracts import ContentAsset, FetchRequest, ProcessContext, PublishTarget
 from workflow_engine.registry.plugin_registry import PluginRegistry
 from workflow_engine.runtime.content_repository import ContentRepository
+from workflow_engine.runtime.observability import WorkflowRunTrace
 
 
 @dataclass(slots=True)
@@ -23,6 +24,11 @@ class LinearPipelineRunner:
         self.repository = ContentRepository()
 
     async def run(self, spec: LinearPipelineSpec) -> list[dict]:
+        trace = WorkflowRunTrace(
+            run_id=spec.process_context.run_id or "linear-pipeline",
+            workflow_name="content.pipeline.linear",
+        )
+        trace.mark_running()
         fetcher = self.registry.get_fetcher(spec.fetcher_name)
         processor = self.registry.get_processor(spec.processor_name)
         publisher = self.registry.get_publisher(spec.publisher_name)
@@ -61,7 +67,14 @@ class LinearPipelineRunner:
                     "process_status": process_result.status,
                     "publish_status": publish_result.status,
                     "target_name": publish_result.target_name,
+                    "run_id": spec.process_context.run_id,
                 }
             )
+            trace.record_item(
+                succeeded=publish_result.status == "published",
+                message=f"{item.source_type}:{item.source_id}",
+                payload=results[-1],
+            )
 
+        trace.mark_finished(status="succeeded" if trace.items_failed == 0 else "partial")
         return results

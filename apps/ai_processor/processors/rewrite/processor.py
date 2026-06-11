@@ -1,30 +1,8 @@
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
-
 from ai_processor.runtime.base import BaseProcessor
-from workflow_engine.runtime.legacy_paths import ensure_legacy_paths
+from ai_processor.runtime.llm_client import MockProvider, OpenAICompatibleProvider
 from workflow_engine.registry.contracts import ContentAsset, ProcessContext, ProcessResult
-
-ensure_legacy_paths()
-
-
-def _load_legacy_llm_client():
-    llm_client_path = (
-        Path(__file__).resolve().parents[3] / "platform" / "services" / "llm_client.py"
-    )
-    spec = importlib.util.spec_from_file_location("legacy_llm_client", llm_client_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"unable to load llm client module from {llm_client_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_legacy_llm_client = _load_legacy_llm_client()
-MockProvider = _legacy_llm_client.MockProvider
-OpenAICompatibleProvider = _legacy_llm_client.OpenAICompatibleProvider
 
 
 class RewriteProcessor(BaseProcessor):

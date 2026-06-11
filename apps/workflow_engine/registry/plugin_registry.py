@@ -28,3 +28,10 @@ class PluginRegistry:
 
     def get_publisher(self, name: str) -> Publisher:
         return self.publishers[name]
+
+    def snapshot(self) -> dict[str, list[str]]:
+        return {
+            "fetchers": sorted(self.fetchers.keys()),
+            "processors": sorted(self.processors.keys()),
+            "publishers": sorted(self.publishers.keys()),
+        }

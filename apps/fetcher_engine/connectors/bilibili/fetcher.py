@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-from fetcher_engine.runtime.base import BaseFetcher
-from workflow_engine.registry.contracts import FetchRequest, SourceItem
-from workflow_engine.runtime.legacy_paths import ensure_legacy_paths
-
-ensure_legacy_paths()
-
-from ado_repost.fetchers import RssFeedAdapter
-from ado_repost.fetchers.models import FetchRequest as LegacyFetchRequest
+from apps.fetcher_engine.runtime.base import BaseFetcher
+from apps.fetcher_engine.runtime.rss import RssFeedAdapter, RssFetchRequest
+from apps.workflow_engine.registry.contracts import FetchRequest, SourceItem
 
 
 class BilibiliFetcher(BaseFetcher):
@@ -25,7 +20,7 @@ class BilibiliFetcher(BaseFetcher):
             stream_key=self.stream_key,
         )
         batch = adapter.fetch(
-            request=LegacyFetchRequest(lookback_hours=request.lookback_hours),
+            request=RssFetchRequest(lookback_hours=request.lookback_hours),
             cursor_store=None,
         )
         return [

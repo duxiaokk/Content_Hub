@@ -1,98 +1,98 @@
-# Content Hub 改动与进度记录
+﻿# Content Hub 鏀瑰姩涓庤繘搴﹁褰?
 
-## 1. 目的
+## 1. 鐩殑
 
-本文件记录本轮改造已经修改了什么、当前进度到哪里、下一步准备做什么。
+鏈枃浠惰褰曟湰杞敼閫犲凡缁忎慨鏀逛簡浠€涔堛€佸綋鍓嶈繘搴﹀埌鍝噷銆佷笅涓€姝ュ噯澶囧仛浠€涔堛€?
 
-更新原则：
+鏇存柊鍘熷垯锛?
 
-1. 记录真实已落库/已落代码的内容
-2. 不把“计划中”写成“已完成”
-3. 后续每推进一阶段继续追加
+1. 璁板綍鐪熷疄宸茶惤搴?宸茶惤浠ｇ爜鐨勫唴瀹?
+2. 涓嶆妸鈥滆鍒掍腑鈥濆啓鎴愨€滃凡瀹屾垚鈥?
+3. 鍚庣画姣忔帹杩涗竴闃舵缁х画杩藉姞
 
-## 2. 当前总进度
+## 2. 褰撳墠鎬昏繘搴?
 
-当前阶段目标：
+褰撳墠闃舵鐩爣锛?
 
 `CNBlogs / Bilibili -> AI Rewrite -> Blog Draft Publish`
 
-总体进度判断：
+鎬讳綋杩涘害鍒ゆ柇锛?
 
-- 架构蓝图：已完成
-- 风险与依赖记录：已完成
-- 最小内容模型：已完成
-- 新引擎目录骨架：已完成
-- 采集桥接：已完成
-- AI 改写桥接：已完成
-- 草稿发布桥接：已完成
-- `content_items` 状态回写：已完成
-- `scheduler_center` 接线性 pipeline：已完成基础接入
-- 真实闭环联调：未完成
+- 鏋舵瀯钃濆浘锛氬凡瀹屾垚
+- 椋庨櫓涓庝緷璧栬褰曪細宸插畬鎴?
+- 鏈€灏忓唴瀹规ā鍨嬶細宸插畬鎴?
+- 鏂板紩鎿庣洰褰曢鏋讹細宸插畬鎴?
+- 閲囬泦妗ユ帴锛氬凡瀹屾垚
+- AI 鏀瑰啓妗ユ帴锛氬凡瀹屾垚
+- 鑽夌鍙戝竷妗ユ帴锛氬凡瀹屾垚
+- `content_items` 鐘舵€佸洖鍐欙細宸插畬鎴?
+- `scheduler_center` 鎺ョ嚎鎬?pipeline锛氬凡瀹屾垚鍩虹鎺ュ叆
+- 鐪熷疄闂幆鑱旇皟锛氭湭瀹屾垚
 
-## 3. 已修改内容
+## 3. 宸蹭慨鏀瑰唴瀹?
 
-### 3.1 文档
+### 3.1 鏂囨。
 
-新增：
+鏂板锛?
 
 - [content_hub_target_architecture.md](/D:/Python/content_hub/apps/platform/docs/content_hub_target_architecture.md)
 - [content_hub_risks_and_dependencies.md](/D:/Python/content_hub/apps/platform/docs/content_hub_risks_and_dependencies.md)
 - [content_hub_change_log_and_progress.md](/D:/Python/content_hub/apps/platform/docs/content_hub_change_log_and_progress.md)
 
-作用：
+浣滅敤锛?
 
-- 目标架构蓝图
-- 风险、依赖、外部参数清单
-- 本文件：改动与进度持续记录
+- 鐩爣鏋舵瀯钃濆浘
+- 椋庨櫓銆佷緷璧栥€佸閮ㄥ弬鏁版竻鍗?
+- 鏈枃浠讹細鏀瑰姩涓庤繘搴︽寔缁褰?
 
-### 3.2 数据模型与迁移
+### 3.2 鏁版嵁妯″瀷涓庤縼绉?
 
-修改：
+淇敼锛?
 
 - [models.py](/D:/Python/content_hub/apps/platform/models.py)
 
-新增：
+鏂板锛?
 
 - [f3a1c2d4e5f6_add_content_items.py](/D:/Python/content_hub/apps/platform/migrations/versions/f3a1c2d4e5f6_add_content_items.py)
 
-内容：
+鍐呭锛?
 
-- 新增 `ContentItem`
-- 新增 `content_items` 表
-- 增加唯一键：`source_type + source_id`
-- 增加 `pipeline_status` / `publish_status` 等运行态字段
+- 鏂板 `ContentItem`
+- 鏂板 `content_items` 琛?
+- 澧炲姞鍞竴閿細`source_type + source_id`
+- 澧炲姞 `pipeline_status` / `publish_status` 绛夎繍琛屾€佸瓧娈?
 
-### 3.3 CRUD 层
+### 3.3 CRUD 灞?
 
-新增：
+鏂板锛?
 
 - [crud_content_item.py](/D:/Python/content_hub/apps/platform/crud/crud_content_item.py)
 
-修改：
+淇敼锛?
 
 - [__init__.py](/D:/Python/content_hub/apps/platform/crud/__init__.py)
 
-内容：
+鍐呭锛?
 
-- 新增 `content_items` 的查询、创建、更新操作
+- 鏂板 `content_items` 鐨勬煡璇€佸垱寤恒€佹洿鏂版搷浣?
 
-### 3.4 新引擎目录骨架
+### 3.4 鏂板紩鎿庣洰褰曢鏋?
 
-新增目录：
+鏂板鐩綍锛?
 
 - [apps/fetcher_engine](/D:/Python/content_hub/apps/fetcher_engine)
 - [apps/ai_processor](/D:/Python/content_hub/apps/ai_processor)
 - [apps/publisher_engine](/D:/Python/content_hub/apps/publisher_engine)
 - [apps/workflow_engine](/D:/Python/content_hub/apps/workflow_engine)
 
-内容：
+鍐呭锛?
 
-- 基础包结构
+- 鍩虹鍖呯粨鏋?
 - runtime / connectors / processors / adapters / registry / pipeline
 
-### 3.5 工作流契约与注册表
+### 3.5 宸ヤ綔娴佸绾︿笌娉ㄥ唽琛?
 
-新增：
+鏂板锛?
 
 - [contracts.py](/D:/Python/content_hub/apps/workflow_engine/registry/contracts.py)
 - [plugin_registry.py](/D:/Python/content_hub/apps/workflow_engine/registry/plugin_registry.py)
@@ -100,87 +100,86 @@
 - [settings.py](/D:/Python/content_hub/apps/workflow_engine/registry/settings.py)
 - [bootstrap.py](/D:/Python/content_hub/apps/workflow_engine/registry/bootstrap.py)
 
-内容：
+鍐呭锛?
 
 - `Fetcher / Processor / Publisher`
 - `SourceItem / ContentAsset / PublishResult`
 - `AIProcessorConfig`
-- 静态注册表
-- 默认注册入口
+- 闈欐€佹敞鍐岃〃
+- 榛樿娉ㄥ唽鍏ュ彛
 
-### 3.6 采集器接入
+### 3.6 閲囬泦鍣ㄦ帴鍏?
 
-新增或修改：
+鏂板鎴栦慨鏀癸細
 
 - [base.py](/D:/Python/content_hub/apps/fetcher_engine/runtime/base.py)
 - [fetcher.py](/D:/Python/content_hub/apps/fetcher_engine/connectors/cnblogs/fetcher.py)
 - [fetcher.py](/D:/Python/content_hub/apps/fetcher_engine/connectors/bilibili/fetcher.py)
 
-内容：
+鍐呭锛?
 
-- `CNBlogsFetcher` 复用 `ado_repost` RSS 适配器
-- `BilibiliFetcher` 复用 `ado_repost` RSS 适配器
+- `CNBlogsFetcher` 澶嶇敤 `ado_repost` RSS 閫傞厤鍣?
+- `BilibiliFetcher` 澶嶇敤 `ado_repost` RSS 閫傞厤鍣?
 
-### 3.7 AI 改写接入
+### 3.7 AI 鏀瑰啓鎺ュ叆
 
-新增或修改：
+鏂板鎴栦慨鏀癸細
 
 - [base.py](/D:/Python/content_hub/apps/ai_processor/runtime/base.py)
 - [processor.py](/D:/Python/content_hub/apps/ai_processor/processors/rewrite/processor.py)
 
-内容：
+鍐呭锛?
 
-- 接入现有 `llm_client.py`
-- 支持 `local / openai / anthropic` 配置路径
-- 支持 `skip / raw / retry` 降级策略
+- 鎺ュ叆鐜版湁 `llm_client.py`
+- 鏀寔 `local / openai / anthropic` 閰嶇疆璺緞
+- 鏀寔 `skip / raw / retry` 闄嶇骇绛栫暐
 
-### 3.8 发布器接入
+### 3.8 鍙戝竷鍣ㄦ帴鍏?
 
-新增或修改：
+鏂板鎴栦慨鏀癸細
 
 - [base.py](/D:/Python/content_hub/apps/publisher_engine/runtime/base.py)
 - [settings.py](/D:/Python/content_hub/apps/publisher_engine/runtime/settings.py)
 - [publisher.py](/D:/Python/content_hub/apps/publisher_engine/adapters/blog/publisher.py)
 
-内容：
+鍐呭锛?
 
-- 复用 `ado_repost` draft publishing client
-- 当前目标是 platform 内部草稿接口
-- disabled 模式安全返回，不误发请求
+- 澶嶇敤 `ado_repost` draft publishing client
+- 褰撳墠鐩爣鏄?platform 鍐呴儴鑽夌鎺ュ彛
+- disabled 妯″紡瀹夊叏杩斿洖锛屼笉璇彂璇锋眰
 
-### 3.9 线性流水线
+### 3.9 绾挎€ф祦姘寸嚎
 
-新增或修改：
+鏂板鎴栦慨鏀癸細
 
 - [linear_pipeline.py](/D:/Python/content_hub/apps/workflow_engine/pipeline/linear_pipeline.py)
 - [payloads.py](/D:/Python/content_hub/apps/workflow_engine/pipeline/payloads.py)
 - [content_repository.py](/D:/Python/content_hub/apps/workflow_engine/runtime/content_repository.py)
-- [legacy_paths.py](/D:/Python/content_hub/apps/workflow_engine/runtime/legacy_paths.py)
 
-内容：
+鍐呭锛?
 
 - `fetch -> process -> publish`
-- 调度 payload 解析
-- 抓取/处理/发布状态写回 `content_items`
-- 兼容旧目录的桥接导入
+- 璋冨害 payload 瑙ｆ瀽
+- 鎶撳彇/澶勭悊/鍙戝竷鐘舵€佸啓鍥?`content_items`
+- 已移除对旧目录桥接导入的依赖
 
-### 3.10 调度中心接入
+### 3.10 璋冨害涓績鎺ュ叆
 
-修改：
+淇敼锛?
 
 - [dispatcher.py](/D:/Python/content_hub/apps/platform/scheduler_center/dispatcher.py)
 - [__init__.py](/D:/Python/content_hub/apps/platform/scheduler_center/__init__.py)
 
-内容：
+鍐呭锛?
 
-- 新增 `content.pipeline.linear` 本地执行分支
-- 遇到该任务类型时不再走远端 agent HTTP
-- 直接在调度进程内运行 `LinearPipelineRunner`
-- 对 `platform` 标准库冲突增加调度侧导入修复
+- 鏂板 `content.pipeline.linear` 鏈湴鎵ц鍒嗘敮
+- 閬囧埌璇ヤ换鍔＄被鍨嬫椂涓嶅啀璧拌繙绔?agent HTTP
+- 鐩存帴鍦ㄨ皟搴﹁繘绋嬪唴杩愯 `LinearPipelineRunner`
+- 瀵?`platform` 鏍囧噯搴撳啿绐佸鍔犺皟搴︿晶瀵煎叆淇
 
-## 4. 已补测试
+## 4. 宸茶ˉ娴嬭瘯
 
-新增：
+鏂板锛?
 
 - [test_content_pipeline_contracts.py](/D:/Python/content_hub/apps/platform/tests/test_content_pipeline_contracts.py)
 - [test_content_item_crud.py](/D:/Python/content_hub/apps/platform/tests/test_content_item_crud.py)
@@ -188,85 +187,85 @@
 - [test_linear_pipeline_payload.py](/D:/Python/content_hub/apps/workflow_engine/tests/test_linear_pipeline_payload.py)
 - [test_blog_publisher.py](/D:/Python/content_hub/apps/publisher_engine/tests/test_blog_publisher.py)
 
-当前验证过的点：
+褰撳墠楠岃瘉杩囩殑鐐癸細
 
-- `content_items` 建表
+- `content_items` 寤鸿〃
 - `content_items` CRUD
 - registry bootstrap
-- linear payload 解析
-- blog publisher disabled 模式
-- scheduler dispatcher 可导入并识别本地 pipeline 分支
+- linear payload 瑙ｆ瀽
+- blog publisher disabled 妯″紡
+- scheduler dispatcher 鍙鍏ュ苟璇嗗埆鏈湴 pipeline 鍒嗘敮
 
-## 5. 当前仍未完成的事项
+## 5. 褰撳墠浠嶆湭瀹屾垚鐨勪簨椤?
 
-### 高优先级
+### 楂樹紭鍏堢骇
 
-1. 提交一个真实的 `content.pipeline.linear` 调度任务并跑通
-2. 将抓取结果真正写入数据库后查看内容是否正确
-3. 验证 AI 改写后 `processed_content` 是否落库
-4. 验证发布成功后 `publish_status` 是否更新
+1. 鎻愪氦涓€涓湡瀹炵殑 `content.pipeline.linear` 璋冨害浠诲姟骞惰窇閫?
+2. 灏嗘姄鍙栫粨鏋滅湡姝ｅ啓鍏ユ暟鎹簱鍚庢煡鐪嬪唴瀹规槸鍚︽纭?
+3. 楠岃瘉 AI 鏀瑰啓鍚?`processed_content` 鏄惁钀藉簱
+4. 楠岃瘉鍙戝竷鎴愬姛鍚?`publish_status` 鏄惁鏇存柊
 
-### 中优先级
+### 涓紭鍏堢骇
 
-1. 用真实 feed URL 替换默认占位值
-2. 用真实 LLM API 跑一轮改写
-3. 把调度入口包装成更易调用的内部 API
+1. 鐢ㄧ湡瀹?feed URL 鏇挎崲榛樿鍗犱綅鍊?
+2. 鐢ㄧ湡瀹?LLM API 璺戜竴杞敼鍐?
+3. 鎶婅皟搴﹀叆鍙ｅ寘瑁呮垚鏇存槗璋冪敤鐨勫唴閮?API
 
-### 低优先级
+### 浣庝紭鍏堢骇
 
-1. 把旧桥接实现逐步迁出
-2. 彻底消除 `apps/platform` 命名冲突
-3. 逐步迁往 `apps/web_console`
+1. 鎶婃棫妗ユ帴瀹炵幇閫愭杩佸嚭
+2. 褰诲簳娑堥櫎 `apps/platform` 鍛藉悕鍐茬獊
+3. 閫愭杩佸線 `apps/web_console`
 
-## 6. 当前阻塞
+## 6. 褰撳墠闃诲
 
-最主要的阻塞已经从“代码没有”变成“外部参数还没定”：
+鏈€涓昏鐨勯樆濉炲凡缁忎粠鈥滀唬鐮佹病鏈夆€濆彉鎴愨€滃閮ㄥ弬鏁拌繕娌″畾鈥濓細
 
-1. 博客园真实 feed URL
-2. B 站真实 feed URL / UP 主 ID
-3. 真实 LLM API key
-4. 真实 LLM base URL
-5. 真实模型名
-6. 是否继续先投递到 platform 草稿箱
+1. 鍗氬鍥湡瀹?feed URL
+2. B 绔欑湡瀹?feed URL / UP 涓?ID
+3. 鐪熷疄 LLM API key
+4. 鐪熷疄 LLM base URL
+5. 鐪熷疄妯″瀷鍚?
+6. 鏄惁缁х画鍏堟姇閫掑埌 platform 鑽夌绠?
 
-## 7. 下一步建议
+## 7. 涓嬩竴姝ュ缓璁?
 
-最合理的下一步：
+鏈€鍚堢悊鐨勪笅涓€姝ワ細
 
-1. 新增一个内部触发入口，专门提交 `content.pipeline.linear`
-2. 用一组固定测试 payload 跑一次调度任务
-3. 读回 `scheduler_tasks` 和 `content_items` 验证全链路结果
+1. 鏂板涓€涓唴閮ㄨЕ鍙戝叆鍙ｏ紝涓撻棬鎻愪氦 `content.pipeline.linear`
+2. 鐢ㄤ竴缁勫浐瀹氭祴璇?payload 璺戜竴娆¤皟搴︿换鍔?
+3. 璇诲洖 `scheduler_tasks` 鍜?`content_items` 楠岃瘉鍏ㄩ摼璺粨鏋?
 
-## 8. 本次阶段补充
+## 8. 鏈闃舵琛ュ厖
 
-本阶段新增：
+鏈樁娈垫柊澧烇細
 
-- 内部触发入口 `/api/internal/tasks/content-pipeline/linear/run`
-- 对应 schema 文件 [pipeline.py](/D:/Python/content_hub/apps/platform/schemas/pipeline.py)
-- `schemas/__init__.py` 已导出线性 pipeline 请求模型
-- `routers/internal_tasks.py` 已支持提交 `content.pipeline.linear`
+- 鍐呴儴瑙﹀彂鍏ュ彛 `/api/internal/tasks/content-pipeline/linear/run`
+- 瀵瑰簲 schema 鏂囦欢 [pipeline.py](/D:/Python/content_hub/apps/platform/schemas/pipeline.py)
+- `schemas/__init__.py` 宸插鍑虹嚎鎬?pipeline 璇锋眰妯″瀷
+- `routers/internal_tasks.py` 宸叉敮鎸佹彁浜?`content.pipeline.linear`
 
-新增验证：
+鏂板楠岃瘉锛?
 
-- 新 pipeline schema 可导入
-- internal task 路由可导入新的 linear pipeline 触发入口
+- 鏂?pipeline schema 鍙鍏?
+- internal task 璺敱鍙鍏ユ柊鐨?linear pipeline 瑙﹀彂鍏ュ彛
 
-当前推荐的实际联调入口：
+褰撳墠鎺ㄨ崘鐨勫疄闄呰仈璋冨叆鍙ｏ細
 
-- 通过 `/api/internal/tasks/content-pipeline/linear/run` 提交一条任务
-- 然后查询 scheduler task 状态
-- 再检查 `content_items` 表中的状态变化
+- 閫氳繃 `/api/internal/tasks/content-pipeline/linear/run` 鎻愪氦涓€鏉′换鍔?
+- 鐒跺悗鏌ヨ scheduler task 鐘舵€?
+- 鍐嶆鏌?`content_items` 琛ㄤ腑鐨勭姸鎬佸彉鍖?
 
-## 9. 本次阶段结论
+## 9. 鏈闃舵缁撹
 
-到当前为止，已经不是“架构讨论阶段”，而是“闭环联调前阶段”。
+鍒板綋鍓嶄负姝紝宸茬粡涓嶆槸鈥滄灦鏋勮璁洪樁娈碘€濓紝鑰屾槸鈥滈棴鐜仈璋冨墠闃舵鈥濄€?
 
-也就是说：
+涔熷氨鏄锛?
 
-- 蓝图有了
-- 风险记账有了
-- 数据模型有了
-- 三类引擎骨架有了
-- 调度接线也有了
+- 钃濆浘鏈変簡
+- 椋庨櫓璁拌处鏈変簡
+- 鏁版嵁妯″瀷鏈変簡
+- 涓夌被寮曟搸楠ㄦ灦鏈変簡
+- 璋冨害鎺ョ嚎涔熸湁浜?
 
-现在差的是一轮真实任务执行验证。
+鐜板湪宸殑鏄竴杞湡瀹炰换鍔℃墽琛岄獙璇併€?

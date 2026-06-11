@@ -1,15 +1,10 @@
 from __future__ import annotations
 
 from publisher_engine.runtime.base import BasePublisher
+from publisher_engine.runtime.client import BlogPublishingClient
+from publisher_engine.runtime.models import DraftPayload
 from publisher_engine.runtime.settings import PublisherSettings
-from workflow_engine.runtime.legacy_paths import ensure_legacy_paths
 from workflow_engine.registry.contracts import ContentAsset, PublishResult, PublishTarget
-
-ensure_legacy_paths()
-
-from ado_repost.publishing.client import BlogPublishingClient
-from ado_repost.publishing.config import PublishingSettings
-from ado_repost.publishing.models import DraftPayload
 
 
 class BlogPublisher(BasePublisher):
@@ -26,7 +21,7 @@ class BlogPublisher(BasePublisher):
                 error_message="publisher disabled by configuration",
             )
 
-        publishing_settings = PublishingSettings(
+        publishing_settings = PublisherSettings(
             enabled=self.settings.enabled,
             endpoint_url=target.options.get("endpoint_url", self.settings.endpoint_url),
             internal_token=target.options.get("internal_token", self.settings.internal_token),

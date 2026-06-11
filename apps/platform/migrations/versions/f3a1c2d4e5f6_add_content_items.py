@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 
 revision = "f3a1c2d4e5f6"
-down_revision = "e1f0d2a7c9b8"
+down_revision = "0002_pg_compat"
 branch_labels = None
 depends_on = None
 

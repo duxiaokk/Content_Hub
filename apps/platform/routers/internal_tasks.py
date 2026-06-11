@@ -26,6 +26,21 @@ class AdoRepostRunRequest(BaseModel):
     idempotency_key: str | None = Field(default=None, max_length=128)
 
 
+class ContentWorkflowRunRequest(BaseModel):
+    workflow_name: str = Field(default="content.workflow.run", min_length=1, max_length=128)
+    source_name: str = Field(default="cnblogs", min_length=1, max_length=64)
+    fetcher_name: str = Field(default="cnblogs", min_length=1, max_length=64)
+    processor_name: str = Field(default="rewrite", min_length=1, max_length=64)
+    publisher_name: str = Field(default="blog", min_length=1, max_length=64)
+    lookback_hours: int = Field(default=24, ge=1, le=720)
+    limit: int = Field(default=20, ge=1, le=200)
+    fetch_options: dict[str, Any] = Field(default_factory=dict)
+    process_options: dict[str, Any] = Field(default_factory=dict)
+    publish_options: dict[str, Any] = Field(default_factory=dict)
+    trace_id: str | None = None
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
 @router.post("/ado-repost/run")
 def trigger_ado_repost_run(
     request: Request,
@@ -67,4 +82,36 @@ def trigger_linear_content_pipeline(
         "task_id": submit.get("id"),
         "trace_id": submit.get("trace_id") or trace_id,
         "task_type": "content.pipeline.linear",
+    }
+
+
+@router.post("/content-workflow/run")
+def trigger_content_workflow(
+    request: Request,
+    body: ContentWorkflowRunRequest,
+):
+    _verify_internal_token(request)
+    trace_id = (body.trace_id or "").strip() or str(uuid.uuid4())
+    payload = {
+        "workflow_name": body.workflow_name,
+        "source_name": body.source_name,
+        "fetcher_name": body.fetcher_name,
+        "processor_name": body.processor_name,
+        "publisher_name": body.publisher_name,
+        "lookback_hours": body.lookback_hours,
+        "limit": body.limit,
+        "fetch_options": body.fetch_options,
+        "process_options": body.process_options,
+        "publish_options": body.publish_options,
+    }
+    submit = get_scheduler_client().submit_task(
+        task_type="content.workflow.run",
+        payload=payload,
+        trace_id=trace_id,
+        idempotency_key=body.idempotency_key,
+    )
+    return {
+        "task_id": submit.get("id"),
+        "trace_id": submit.get("trace_id") or trace_id,
+        "task_type": "content.workflow.run",
     }

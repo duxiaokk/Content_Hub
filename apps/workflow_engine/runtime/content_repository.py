@@ -1,12 +1,25 @@
 from __future__ import annotations
 
-from workflow_engine.runtime.legacy_paths import ensure_legacy_paths
+from dataclasses import dataclass
+from typing import Any
+
 from workflow_engine.registry.contracts import ContentAsset, PublishResult, SourceItem
+from workflow_engine.runtime.crud import (
+    create_content_item,
+    get_content_item_by_source,
+    list_content_items,
+    update_content_item,
+)
+from workflow_engine.runtime.db import SessionLocal
 
-ensure_legacy_paths()
 
-from crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
-from database import SessionLocal
+@dataclass(slots=True)
+class ContentQuery:
+    review_status: str | None = None
+    publish_status: str | None = None
+    pipeline_status: str | None = None
+    source_type: str | None = None
+    limit: int = 100
 
 
 class ContentRepository:
@@ -39,6 +52,28 @@ class ContentRepository:
                 error_message=None,
             )
             return int(updated.id)
+        finally:
+            db.close()
+
+    def attach_fetch_context(
+        self,
+        *,
+        source_type: str,
+        source_id: str,
+        source_config_id: int | None,
+        fetch_run_id: int | None,
+    ) -> None:
+        db = SessionLocal()
+        try:
+            existing = get_content_item_by_source(db, source_type, source_id)
+            if existing is None:
+                return
+            update_content_item(
+                db,
+                existing,
+                source_config_id=source_config_id,
+                fetch_run_id=fetch_run_id,
+            )
         finally:
             db.close()
 
@@ -79,3 +114,53 @@ class ContentRepository:
             )
         finally:
             db.close()
+
+    def get_by_source(self, source_type: str, source_id: str) -> dict[str, Any] | None:
+        db = SessionLocal()
+        try:
+            row = get_content_item_by_source(db, source_type, source_id)
+            if row is None:
+                return None
+            return self.serialize(row)
+        finally:
+            db.close()
+
+    def list_items(self, query: ContentQuery | None = None) -> list[dict[str, Any]]:
+        criteria = query or ContentQuery()
+        db = SessionLocal()
+        try:
+            rows = list_content_items(
+                db,
+                review_status=criteria.review_status,
+                publish_status=criteria.publish_status,
+                pipeline_status=criteria.pipeline_status,
+                source_type=criteria.source_type,
+                limit=criteria.limit,
+            )
+            return [self.serialize(row) for row in rows]
+        finally:
+            db.close()
+
+    @staticmethod
+    def serialize(row: Any) -> dict[str, Any]:
+        return {
+            "id": int(row.id),
+            "source_config_id": row.source_config_id,
+            "fetch_run_id": row.fetch_run_id,
+            "source_type": row.source_type,
+            "source_id": row.source_id,
+            "source_url": row.source_url,
+            "title": row.title,
+            "raw_content": row.raw_content,
+            "processed_content": row.processed_content,
+            "publish_target": row.publish_target,
+            "publish_status": row.publish_status,
+            "pipeline_status": row.pipeline_status,
+            "review_status": row.review_status,
+            "reviewed_by": row.reviewed_by,
+            "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
+            "draft_post_id": row.draft_post_id,
+            "error_message": row.error_message,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }

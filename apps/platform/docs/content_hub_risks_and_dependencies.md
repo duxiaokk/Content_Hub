@@ -1,108 +1,108 @@
-# Content Hub 风险与外部依赖清单
+﻿# Content Hub 椋庨櫓涓庡閮ㄤ緷璧栨竻鍗?
 
-## 1. 目的
+## 1. 鐩殑
 
-本文件记录当前改造阶段所有已知风险、外部依赖、关键配置项、待确认参数和运行前提。
+鏈枃浠惰褰曞綋鍓嶆敼閫犻樁娈垫墍鏈夊凡鐭ラ闄┿€佸閮ㄤ緷璧栥€佸叧閿厤缃」銆佸緟纭鍙傛暟鍜岃繍琛屽墠鎻愩€?
 
-作用：
+浣滅敤锛?
 
-1. 避免后续推进时遗漏阻塞项
-2. 明确哪些值必须由人工提供
-3. 区分“代码已就绪”和“外部条件未满足”
+1. 閬垮厤鍚庣画鎺ㄨ繘鏃堕仐婕忛樆濉為」
+2. 鏄庣‘鍝簺鍊煎繀椤荤敱浜哄伐鎻愪緵
+3. 鍖哄垎鈥滀唬鐮佸凡灏辩华鈥濆拰鈥滃閮ㄦ潯浠舵湭婊¤冻鈥?
 
-## 2. 当前阶段目标
+## 2. 褰撳墠闃舵鐩爣
 
-当前目标不是完整三层中台，而是先跑通这一条闭环：
+褰撳墠鐩爣涓嶆槸瀹屾暣涓夊眰涓彴锛岃€屾槸鍏堣窇閫氳繖涓€鏉￠棴鐜細
 
 `CNBlogs / Bilibili -> AI Rewrite -> Blog Draft Publish`
 
-所以本文只记录和这条主链路直接相关的风险和依赖。
+鎵€浠ユ湰鏂囧彧璁板綍鍜岃繖鏉′富閾捐矾鐩存帴鐩稿叧鐨勯闄╁拰渚濊禆銆?
 
-## 3. 已知架构风险
+## 3. 宸茬煡鏋舵瀯椋庨櫓
 
-### 3.1 `apps/platform` 与 Python 标准库 `platform` 冲突
+### 3.1 `apps/platform` 涓?Python 鏍囧噯搴?`platform` 鍐茬獊
 
-风险等级：高
+椋庨櫓绛夌骇锛氶珮
 
-现象：
+鐜拌薄锛?
 
-- 当 `apps` 被加入 `sys.path` 前部时，`import platform` 可能误命中 `apps/platform`
-- 会连带影响 `sqlalchemy`、`httpx`、`attr` 等依赖导入
+- 褰?`apps` 琚姞鍏?`sys.path` 鍓嶉儴鏃讹紝`import platform` 鍙兘璇懡涓?`apps/platform`
+- 浼氳繛甯﹀奖鍝?`sqlalchemy`銆乣httpx`銆乣attr` 绛変緷璧栧鍏?
 
-当前状态：
+褰撳墠鐘舵€侊細
 
-- 已在 [legacy_paths.py](/D:/Python/content_hub/apps/workflow_engine/runtime/legacy_paths.py) 做临时兜底
-- 该兜底只能算桥接措施，不是长期解法
+- 历史上曾通过 legacy_paths.py 做临时兜底
+- 该桥接层现已移除，当前不再依赖旧目录注入
 
-建议：
+寤鸿锛?
 
-- 尽快将 `apps/platform` 迁移为 `apps/web_console`
+- 灏藉揩灏?`apps/platform` 杩佺Щ涓?`apps/web_console`
 
-### 3.2 现有代码仍处于“桥接旧实现”状态
+### 3.2 鐜版湁浠ｇ爜浠嶅浜庘€滄ˉ鎺ユ棫瀹炵幇鈥濈姸鎬?
 
-风险等级：中高
+椋庨櫓绛夌骇锛氫腑楂?
 
-现象：
+鐜拌薄锛?
 
-- `fetcher_engine` 复用了 `ado_repost`
-- `rewrite processor` 复用了 `platform/services/llm_client.py`
-- `publisher_engine` 将复用 `ado_repost/publishing`
+- `fetcher_engine` 澶嶇敤浜?`ado_repost`
+- `rewrite processor` 澶嶇敤浜?`platform/services/llm_client.py`
+- `publisher_engine` 灏嗗鐢?`ado_repost/publishing`
 
-影响：
+褰卞搷锛?
 
-- 旧目录和新目录会并存一段时间
-- 一旦旧实现行为变化，桥接层也会受影响
+- 鏃х洰褰曞拰鏂扮洰褰曚細骞跺瓨涓€娈垫椂闂?
+- 涓€鏃︽棫瀹炵幇琛屼负鍙樺寲锛屾ˉ鎺ュ眰涔熶細鍙楀奖鍝?
 
-建议：
+寤鸿锛?
 
-- 第一阶段允许桥接
-- 第二阶段再逐步把抓取、AI、发布完全迁到新引擎目录
+- 绗竴闃舵鍏佽妗ユ帴
+- 绗簩闃舵鍐嶉€愭鎶婃姄鍙栥€丄I銆佸彂甯冨畬鍏ㄨ縼鍒版柊寮曟搸鐩綍
 
-### 3.3 工作流目前仅支持线性流水线
+### 3.3 宸ヤ綔娴佺洰鍓嶄粎鏀寔绾挎€ф祦姘寸嚎
 
-风险等级：中
+椋庨櫓绛夌骇锛氫腑
 
-现状：
+鐜扮姸锛?
 
-- 只支持 `fetch -> process -> publish`
+- 鍙敮鎸?`fetch -> process -> publish`
 
-影响：
+褰卞搷锛?
 
-- 暂时不支持条件分支、人工审核节点、并行抓取合流
+- 鏆傛椂涓嶆敮鎸佹潯浠跺垎鏀€佷汉宸ュ鏍歌妭鐐广€佸苟琛屾姄鍙栧悎娴?
 
-建议：
+寤鸿锛?
 
-- 先用这条闭环验证业务可行性，不提前扩展 DAG
+- 鍏堢敤杩欐潯闂幆楠岃瘉涓氬姟鍙鎬э紝涓嶆彁鍓嶆墿灞?DAG
 
-### 3.4 内容模型仍是最小表
+### 3.4 鍐呭妯″瀷浠嶆槸鏈€灏忚〃
 
-风险等级：低中
+椋庨櫓绛夌骇锛氫綆涓?
 
-现状：
+鐜扮姸锛?
 
-- 当前只落一张 `content_items` 表
+- 褰撳墠鍙惤涓€寮?`content_items` 琛?
 
-影响：
+褰卞搷锛?
 
-- 短期足够
-- 后续如果要支持多版本改写、多目标发布、多轮审核，需要扩模型
+- 鐭湡瓒冲
+- 鍚庣画濡傛灉瑕佹敮鎸佸鐗堟湰鏀瑰啓銆佸鐩爣鍙戝竷銆佸杞鏍革紝闇€瑕佹墿妯″瀷
 
-建议：
+寤鸿锛?
 
-- 半年内保持轻量
-- 待闭环稳定后再拆 `publication_records` 等从表
+- 鍗婂勾鍐呬繚鎸佽交閲?
+- 寰呴棴鐜ǔ瀹氬悗鍐嶆媶 `publication_records` 绛変粠琛?
 
-## 4. 外部依赖清单
+## 4. 澶栭儴渚濊禆娓呭崟
 
-### 4.1 LLM 依赖
+### 4.1 LLM 渚濊禆
 
-当前接入方式：
+褰撳墠鎺ュ叆鏂瑰紡锛?
 
-- 复用 [llm_client.py](/D:/Python/content_hub/apps/platform/services/llm_client.py)
-- `openai` / `anthropic` 当前都走 OpenAI-compatible 模式
-- `local` 当前走 mock provider
+- 澶嶇敤 [llm_client.py](/D:/Python/content_hub/apps/platform/services/llm_client.py)
+- `openai` / `anthropic` 褰撳墠閮借蛋 OpenAI-compatible 妯″紡
+- `local` 褰撳墠璧?mock provider
 
-需要配置的项：
+闇€瑕侀厤缃殑椤癸細
 
 - `SECRET_KEY`
 - `CONTENT_HUB_LLM_PROVIDER`
@@ -116,45 +116,45 @@
 - `LLM_MODEL`
 - `MOCK_LLM`
 
-待确认：
+寰呯‘璁わ細
 
-- 你最终要用的 provider 是 `openai`、`anthropic` 还是兼容网关
-- 实际模型名称
-- 单次最大 token 上限
-- 失败时是 `raw` 还是 `retry`
+- 浣犳渶缁堣鐢ㄧ殑 provider 鏄?`openai`銆乣anthropic` 杩樻槸鍏煎缃戝叧
+- 瀹為檯妯″瀷鍚嶇О
+- 鍗曟鏈€澶?token 涓婇檺
+- 澶辫触鏃舵槸 `raw` 杩樻槸 `retry`
 
-### 4.2 采集源依赖
+### 4.2 閲囬泦婧愪緷璧?
 
-当前接入方式：
+褰撳墠鎺ュ叆鏂瑰紡锛?
 
-- `CNBlogsFetcher` 先走 RSS
-- `BilibiliFetcher` 先走 RSS feed
+- `CNBlogsFetcher` 鍏堣蛋 RSS
+- `BilibiliFetcher` 鍏堣蛋 RSS feed
 
-需要配置的项：
+闇€瑕侀厤缃殑椤癸細
 
 - `CONTENT_HUB_CNBLOGS_FEED_URL`
 - `CONTENT_HUB_BILIBILI_FEED_URL`
 
-待确认：
+寰呯‘璁わ細
 
-- 具体抓哪个博客园博主
-- 具体抓哪个 B 站 UP 主
-- 对应 feed URL 是否稳定可访问
+- 鍏蜂綋鎶撳摢涓崥瀹㈠洯鍗氫富
+- 鍏蜂綋鎶撳摢涓?B 绔?UP 涓?
+- 瀵瑰簲 feed URL 鏄惁绋冲畾鍙闂?
 
-### 4.3 发布目标依赖
+### 4.3 鍙戝竷鐩爣渚濊禆
 
-当前接入方式：
+褰撳墠鎺ュ叆鏂瑰紡锛?
 
-- 复用 `ado_repost` 的 draft publishing client
-- 目标是 platform 的内部草稿接口
+- 澶嶇敤 `ado_repost` 鐨?draft publishing client
+- 鐩爣鏄?platform 鐨勫唴閮ㄨ崏绋挎帴鍙?
 
-相关代码：
+鐩稿叧浠ｇ爜锛?
 
 - [client.py](/D:/Python/content_hub/apps/ado_repost/src/ado_repost/publishing/client.py)
 - [config.py](/D:/Python/content_hub/apps/ado_repost/src/ado_repost/publishing/config.py)
 - [models.py](/D:/Python/content_hub/apps/ado_repost/src/ado_repost/publishing/models.py)
 
-需要配置的项：
+闇€瑕侀厤缃殑椤癸細
 
 - `ADO_PUBLISH_ENABLED`
 - `ADO_PUBLISH_ENDPOINT_URL`
@@ -162,94 +162,94 @@
 - `ADO_PUBLISH_TIMEOUT_SECONDS`
 - `ADO_SOURCE_PLATFORM`
 
-默认目标接口：
+榛樿鐩爣鎺ュ彛锛?
 
 - `http://127.0.0.1:8000/api/internal/agent/drafts`
 
-待确认：
+寰呯‘璁わ細
 
-- 当前是否继续先发布到 platform 草稿箱
-- 还是要直接发布到真实博客 API
+- 褰撳墠鏄惁缁х画鍏堝彂甯冨埌 platform 鑽夌绠?
+- 杩樻槸瑕佺洿鎺ュ彂甯冨埌鐪熷疄鍗氬 API
 
-## 5. 关键 URL / ID / 参数记录
+## 5. 鍏抽敭 URL / ID / 鍙傛暟璁板綍
 
-### 5.1 当前代码默认值
+### 5.1 褰撳墠浠ｇ爜榛樿鍊?
 
 #### CNBlogs
 
-- 默认 feed URL:
+- 榛樿 feed URL:
   `https://feed.cnblogs.com/blog/u/126286/rss`
 
-说明：
+璇存槑锛?
 
-- 这是占位默认值
-- 需要替换成你的目标博客园博主 feed
+- 杩欐槸鍗犱綅榛樿鍊?
+- 闇€瑕佹浛鎹㈡垚浣犵殑鐩爣鍗氬鍥崥涓?feed
 
 #### Bilibili
 
-- 默认 feed URL:
+- 榛樿 feed URL:
   `https://rsshub.app/bilibili/user/video/2267573`
 
-说明：
+璇存槑锛?
 
-- 当前通过 RSSHub 形式占位
-- `2267573` 是当前默认占位 UP 主 ID
-- 需要替换成你的目标 UP 主 ID 或你自己的 RSS 代理地址
+- 褰撳墠閫氳繃 RSSHub 褰㈠紡鍗犱綅
+- `2267573` 鏄綋鍓嶉粯璁ゅ崰浣?UP 涓?ID
+- 闇€瑕佹浛鎹㈡垚浣犵殑鐩爣 UP 涓?ID 鎴栦綘鑷繁鐨?RSS 浠ｇ悊鍦板潃
 
 #### YouTube
 
-现有 `ado_repost` 默认值仍存在：
+鐜版湁 `ado_repost` 榛樿鍊间粛瀛樺湪锛?
 
 - channel id:
   `UCln9P4Qm3-EAY4aiEPmRwEA`
 
-说明：
+璇存槑锛?
 
-- 当前阶段主链路未使用
-- 但旧抓取逻辑中仍保留该默认值
+- 褰撳墠闃舵涓婚摼璺湭浣跨敤
+- 浣嗘棫鎶撳彇閫昏緫涓粛淇濈暀璇ラ粯璁ゅ€?
 
-#### 发布接口
+#### 鍙戝竷鎺ュ彛
 
 - platform internal draft endpoint:
   `http://127.0.0.1:8000/api/internal/agent/drafts`
 
-### 5.2 必须由你确认或提供的值
+### 5.2 蹇呴』鐢变綘纭鎴栨彁渚涚殑鍊?
 
-以下值必须最终确认，否则只能停留在“能跑样例”：
+浠ヤ笅鍊煎繀椤绘渶缁堢‘璁わ紝鍚﹀垯鍙兘鍋滅暀鍦ㄢ€滆兘璺戞牱渚嬧€濓細
 
-1. 博客园目标博主 feed URL
-2. B 站目标 UP 主 ID 或 feed URL
+1. 鍗氬鍥洰鏍囧崥涓?feed URL
+2. B 绔欑洰鏍?UP 涓?ID 鎴?feed URL
 3. LLM provider
 4. LLM model
 5. LLM API key
 6. LLM base URL
-7. 发布目标是 platform 草稿箱还是真实博客 API
-8. 如果是真实博客 API，对应 endpoint、token、字段格式
+7. 鍙戝竷鐩爣鏄?platform 鑽夌绠辫繕鏄湡瀹炲崥瀹?API
+8. 濡傛灉鏄湡瀹炲崥瀹?API锛屽搴?endpoint銆乼oken銆佸瓧娈垫牸寮?
 
-## 6. 当前代码状态清单
+## 6. 褰撳墠浠ｇ爜鐘舵€佹竻鍗?
 
-### 已完成
+### 宸插畬鎴?
 
-- `content_items` 最小模型已落库
-- `Fetcher / Processor / Publisher / PluginRegistry` 已建
-- `CNBlogsFetcher` 已接 RSS 适配器
-- `BilibiliFetcher` 已接 RSS 适配器
-- `RewriteProcessor` 已接 LLM client
-- `LinearPipelineRunner` 已就位
-- `scheduler_center` 已接 `content.pipeline.linear` 基础执行分支
+- `content_items` 鏈€灏忔ā鍨嬪凡钀藉簱
+- `Fetcher / Processor / Publisher / PluginRegistry` 宸插缓
+- `CNBlogsFetcher` 宸叉帴 RSS 閫傞厤鍣?
+- `BilibiliFetcher` 宸叉帴 RSS 閫傞厤鍣?
+- `RewriteProcessor` 宸叉帴 LLM client
+- `LinearPipelineRunner` 宸插氨浣?
+- `scheduler_center` 宸叉帴 `content.pipeline.linear` 鍩虹鎵ц鍒嗘敮
 
-### 进行中
+### 杩涜涓?
 
-- 调度任务真实闭环联调
+- 璋冨害浠诲姟鐪熷疄闂幆鑱旇皟
 
-### 未完成
+### 鏈畬鎴?
 
-- 真实配置文件落地
-- 抓取结果写回 `content_items`
-- 发布结果回写 `content_items`
-- 真实博客 API 发布
+- 鐪熷疄閰嶇疆鏂囦欢钀藉湴
+- 鎶撳彇缁撴灉鍐欏洖 `content_items`
+- 鍙戝竷缁撴灉鍥炲啓 `content_items`
+- 鐪熷疄鍗氬 API 鍙戝竷
 
-## 7. 当前阶段建议的环境变量模板
+## 7. 褰撳墠闃舵寤鸿鐨勭幆澧冨彉閲忔ā鏉?
 
 ```env
 SECRET_KEY=replace-with-real-secret
@@ -276,15 +276,15 @@ ADO_PUBLISH_TIMEOUT_SECONDS=15
 ADO_SOURCE_PLATFORM=cnblogs
 ```
 
-## 8. 阻塞项总结
+## 8. 闃诲椤规€荤粨
 
-真正会阻塞闭环验证的，不是代码结构，而是下面这些外部信息：
+鐪熸浼氶樆濉為棴鐜獙璇佺殑锛屼笉鏄唬鐮佺粨鏋勶紝鑰屾槸涓嬮潰杩欎簺澶栭儴淇℃伅锛?
 
-1. 目标博客园 feed URL
-2. 目标 B 站 feed URL / UP 主 ID
-3. 可用的 LLM API key
-4. 可用的 LLM base URL
-5. 最终模型名
-6. 发布目标接口是否已经确定
+1. 鐩爣鍗氬鍥?feed URL
+2. 鐩爣 B 绔?feed URL / UP 涓?ID
+3. 鍙敤鐨?LLM API key
+4. 鍙敤鐨?LLM base URL
+5. 鏈€缁堟ā鍨嬪悕
+6. 鍙戝竷鐩爣鎺ュ彛鏄惁宸茬粡纭畾
 
-这些值一旦明确，闭环验证就可以往前推进。
+杩欎簺鍊间竴鏃︽槑纭紝闂幆楠岃瘉灏卞彲浠ュ線鍓嶆帹杩涖€?

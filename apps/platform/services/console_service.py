@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -10,7 +9,7 @@ from sqlalchemy.orm import Session
 
 import models
 from core.error_codes import ErrorCode
-from crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
+from crud.crud_content_item import get_content_item_by_source, update_content_item
 from crud.crud_post import create_post as crud_create_post
 from scheduler_client import get_scheduler_client
 from schemas.console import (
@@ -19,14 +18,12 @@ from schemas.console import (
     SourceConfigUpdateRequest,
     TriggerFetchRequest,
 )
+from workflow_engine.registry.contracts import SourceItem
+from workflow_engine.runtime.content_repository import ContentRepository
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
-
-
-PLATFORM_DIR = Path(__file__).resolve().parent.parent
-ADO_REPOST_DIR = PLATFORM_DIR.parent / "ado_repost"
 
 
 def _to_json(value: Any) -> str | None:
@@ -422,19 +419,13 @@ def sync_content_items_from_result(
     source: models.SourceConfig,
     result: dict[str, Any],
 ) -> int:
-    processed_path = str(result.get("processed_path") or "").strip()
     result_items = result.get("items") if isinstance(result.get("items"), list) else None
     items: list[dict[str, Any]] = []
 
     if result_items:
         items = [item for item in result_items if isinstance(item, dict)]
-    elif processed_path:
-        items = load_processed_items(processed_path)
-    else:
-        fallback = ADO_REPOST_DIR / "data" / "processed.json"
-        if fallback.exists():
-            items = load_processed_items(str(fallback))
 
+    repository = ContentRepository()
     inserted_count = 0
     for item in items:
         source_id = build_content_source_id(item)
@@ -460,42 +451,42 @@ def sync_content_items_from_result(
                 error_message=None,
             )
         else:
-            create_content_item(
+            inserted_count += 1
+            repository.upsert_fetched_item(
+                SourceItem(
+                    source_type=source.source_type,
+                    source_id=source_id,
+                    source_url=source_url,
+                    title=title,
+                    raw_content=raw_content,
+                    metadata={},
+                )
+            )
+            repository.attach_fetch_context(
+                source_type=source.source_type,
+                source_id=source_id,
+                source_config_id=source.id,
+                fetch_run_id=fetch_run.id,
+            )
+            existing = get_content_item_by_source(db, source.source_type, source_id)
+            if existing is None:
+                continue
+            update_content_item(
                 db,
+                existing,
                 source_config_id=source.id,
                 fetch_run_id=fetch_run.id,
                 source_type=source.source_type,
-                source_id=source_id,
                 source_url=source_url,
                 title=title,
                 raw_content=raw_content,
                 processed_content=raw_content,
-                publish_target=None,
                 publish_status="pending",
                 pipeline_status="processed",
                 review_status="pending_review",
-                reviewed_by=None,
-                reviewed_at=None,
-                draft_post_id=None,
                 error_message=None,
             )
-            inserted_count += 1
     return inserted_count
-
-
-def load_processed_items(processed_path: str) -> list[dict[str, Any]]:
-    path = Path(processed_path)
-    if not path.is_absolute():
-        path = ADO_REPOST_DIR / path
-    if not path.exists():
-        return []
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return []
-    if not isinstance(payload, list):
-        return []
-    return [item for item in payload if isinstance(item, dict)]
 
 
 def build_content_source_id(item: dict[str, Any]) -> str:

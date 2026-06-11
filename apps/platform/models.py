@@ -24,7 +24,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
 
 from database import Base
 
@@ -149,16 +149,24 @@ class ContentItem(Base):
     fetch_run_id = Column(Integer, ForeignKey("fetch_runs.id"), nullable=True, index=True)
     source_type = Column(String(64), nullable=False, index=True)
     source_id = Column(String(255), nullable=False, index=True)
+    source_account = Column(String(255), nullable=True, index=True)
     source_url = Column(String(1024), nullable=True)
     title = Column(String(255), nullable=False, index=True)
+    language = Column(String(16), nullable=False, default="zh", index=True)
     raw_content = Column(Text, nullable=True)
     processed_content = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
+    rewritten_title = Column(String(512), nullable=True)
+    rewritten_content = Column(Text, nullable=True)
+    tags_json = Column(Text, nullable=False, default="[]")
+    score = Column(Float, nullable=False, default=0)
     publish_target = Column(String(128), nullable=True, index=True)
     publish_status = Column(String(32), nullable=False, default="pending", index=True)
     pipeline_status = Column(String(32), nullable=False, default="fetched", index=True)
-    review_status = Column(String(32), nullable=False, default="pending_review", index=True)
+    review_status = Column(String(32), nullable=False, default="pending", index=True)
     reviewed_by = Column(String(150), nullable=True, index=True)
     reviewed_at = Column(DateTime, nullable=True, index=True)
+    digest_included = Column(Boolean, nullable=False, default=False, index=True)
     draft_post_id = Column(Integer, ForeignKey("posts.id"), nullable=True, index=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
@@ -174,6 +182,137 @@ class ContentItem(Base):
         Index("ix_content_items_pipeline_created", "pipeline_status", "created_at"),
         Index("ix_content_items_publish_created", "publish_status", "created_at"),
         Index("ix_content_items_review_created", "review_status", "created_at"),
+    )
+
+
+class SourceSubscription(Base):
+    __tablename__ = "source_subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_type = Column(String(64), nullable=False, index=True)
+    source_name = Column(String(128), nullable=False, index=True)
+    account_identifier = Column(String(255), nullable=True)
+    feed_url = Column(String(1024), nullable=True)
+    schedule_expression = Column(String(64), nullable=True)
+    enabled = Column(Boolean, nullable=False, default=True, index=True)
+    category = Column(String(64), nullable=True, index=True)
+    default_tags = Column(String(512), nullable=True)
+    last_cursor = Column(String(512), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    __table_args__ = (
+        Index("uq_source_subscriptions_type_account", "source_type", "account_identifier", unique=True),
+    )
+
+
+class FilterRule(Base):
+    __tablename__ = "filter_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    rule_type = Column(String(32), nullable=False, index=True)
+    rule_value = Column(Text, nullable=False)
+    priority = Column(Integer, nullable=False, default=0, index=True)
+    enabled = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+
+class RewriteProfile(Base):
+    __tablename__ = "rewrite_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(64), nullable=False, unique=True, index=True)
+    provider = Column(String(32), nullable=True, index=True)
+    model = Column(String(64), nullable=True)
+    timeout_seconds = Column(Integer, nullable=False, default=60)
+    fallback_strategy = Column(String(16), nullable=False, default="skip")
+    system_prompt = Column(Text, nullable=True)
+    max_tokens = Column(Integer, nullable=False, default=2048)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+
+class ReviewQueue(Base):
+    __tablename__ = "review_queue"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content_item_id = Column(Integer, ForeignKey("content_items.id"), nullable=False, index=True)
+    candidate_title = Column(String(512), nullable=True)
+    candidate_content = Column(Text, nullable=True)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    reviewer = Column(String(64), nullable=True, index=True)
+    review_note = Column(Text, nullable=True)
+    reviewed_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    __table_args__ = (
+        Index("ix_review_queue_status_created", "status", "created_at"),
+    )
+
+
+class DigestReport(Base):
+    __tablename__ = "digest_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False, index=True)
+    content_markdown = Column(Text, nullable=False)
+    included_count = Column(Integer, nullable=False, default=0)
+    generated_at = Column(DateTime, nullable=True, index=True)
+    run_id = Column(String(64), nullable=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+
+class PublishRecord(Base):
+    __tablename__ = "publish_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content_item_id = Column(Integer, ForeignKey("content_items.id"), nullable=False, index=True)
+    target_type = Column(String(32), nullable=False, index=True)
+    target_name = Column(String(128), nullable=True, index=True)
+    status = Column(String(32), nullable=False, index=True)
+    external_url = Column(String(1024), nullable=True)
+    external_id = Column(String(255), nullable=True, index=True)
+    response_payload = Column(Text, nullable=True)
+    run_id = Column(String(64), nullable=True, index=True)
+    published_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    __table_args__ = (
+        Index("ix_publish_records_target_status_created", "target_type", "status", "created_at"),
     )
 
 

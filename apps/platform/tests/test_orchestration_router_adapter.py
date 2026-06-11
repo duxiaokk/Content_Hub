@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from scheduler_center.database import Base, SessionLocal, engine
+from scheduler_center.models import SchedulerTask
+from scheduler_center.orchestration_router import router
+
+
+def test_orchestration_adapter_submits_scheduler_workflow_task() -> None:
+    Base.metadata.create_all(bind=engine)
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/internal/orchestration/runs",
+        headers={"x-internal-token": "local-dev-scheduler-token"},
+        json={
+            "intent": "run content workflow",
+            "name": "workflow-a",
+            "context": {
+                "source_name": "cnblogs",
+                "fetcher_name": "cnblogs",
+                "processor_name": "rewrite",
+                "publisher_name": "blog",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    run_id = payload["run_id"]
+
+    db = SessionLocal()
+    try:
+        task = db.query(SchedulerTask).filter_by(id=run_id).first()
+        assert task is not None
+        assert task.task_type == "content.workflow.run"
+    finally:
+        db.close()
+
+
+def test_orchestration_adapter_lists_scheduler_runs() -> None:
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/internal/orchestration/runs",
+        headers={"x-internal-token": "local-dev-scheduler-token"},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert "items" in payload

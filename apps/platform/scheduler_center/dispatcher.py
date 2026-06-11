@@ -24,6 +24,7 @@ from scheduler_center.models import (
 )
 
 from scheduler_center import _ensure_stdlib_platform
+from workflow_engine.api.service import WorkflowEngineService
 from workflow_engine.pipeline.linear_pipeline import LinearPipelineRunner, LinearPipelineSpec
 from workflow_engine.pipeline.payloads import LinearPipelinePayload
 from workflow_engine.registry.bootstrap import build_default_registry
@@ -302,6 +303,15 @@ class SchedulerDispatcher:
             payload = self._safe_json_loads(task.payload_json) or {}
             attempt_no = int(task.attempt_count) + 1
 
+            if task.task_type == "content.workflow.run":
+                self._execute_content_workflow(
+                    db=db,
+                    task=task,
+                    attempt_no=attempt_no,
+                    payload=payload,
+                )
+                return
+
             if task.task_type == "content.pipeline.linear":
                 self._execute_local_linear_pipeline(
                     db=db,
@@ -541,6 +551,110 @@ class SchedulerDispatcher:
                 trace_id=trace_id,
                 level="INFO",
                 message=f"local linear pipeline succeeded on attempt {attempt_no}",
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="ATTEMPT_FINISHED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="STATUS_CHANGED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            db.commit()
+        except Exception as exc:
+            attempt.retryable = 0
+            self._mark_retry_or_fail(
+                db,
+                task,
+                attempt,
+                attempt_no,
+                str(exc),
+                retryable=False,
+            )
+
+    def _execute_content_workflow(
+        self,
+        *,
+        db: Session,
+        task: SchedulerTask,
+        attempt_no: int,
+        payload: dict[str, Any],
+    ) -> None:
+        trace_id = task.trace_id or str(uuid.uuid4())
+        attempt = SchedulerTaskAttempt(
+            task_id=task.id,
+            attempt_no=attempt_no,
+            agent="workflow_engine",
+            trace_id=trace_id,
+            status=TaskStatus.RUNNING,
+            started_at=_utcnow(),
+            request_url="local://workflow_engine/workflow/run",
+            request_json=json.dumps(payload, ensure_ascii=False)[:20000],
+        )
+        db.add(attempt)
+        task.last_agent = "workflow_engine"
+        task.updated_at = _utcnow()
+        self._append_event(
+            db,
+            task_id=task.id,
+            trace_id=trace_id,
+            event_type="ATTEMPT_STARTED",
+            from_status=TaskStatus.RUNNING,
+            to_status=TaskStatus.RUNNING,
+            attempt_no=attempt_no,
+            message="executing workflow_engine DAG workflow",
+        )
+        db.commit()
+        db.refresh(attempt)
+
+        service = WorkflowEngineService()
+        try:
+            result_obj = asyncio.run(
+                service.run_content_workflow(
+                    workflow_name=str(payload.get("workflow_name") or "content.workflow.run"),
+                    source_name=str(payload.get("source_name") or payload.get("fetcher_name") or "cnblogs"),
+                    fetcher_name=str(payload.get("fetcher_name") or "cnblogs"),
+                    processor_name=str(payload.get("processor_name") or "rewrite"),
+                    publisher_name=str(payload.get("publisher_name") or "blog"),
+                    lookback_hours=int(payload.get("lookback_hours") or 24),
+                    limit=int(payload.get("limit") or 20),
+                    options={
+                        "fetch": dict(payload.get("fetch_options") or {}),
+                        "process": dict(payload.get("process_options") or {}),
+                        "publish": dict(payload.get("publish_options") or {}),
+                    },
+                    run_id=trace_id,
+                )
+            )
+
+            now = _utcnow()
+            attempt.status = TaskStatus.SUCCEEDED
+            attempt.finished_at = now
+            attempt.response_text = json.dumps(result_obj, ensure_ascii=False)[:20000]
+            task.status = TaskStatus.SUCCEEDED
+            task.attempt_count = attempt_no
+            task.result_json = json.dumps(result_obj, ensure_ascii=False)
+            task.last_error = None
+            task.next_run_at = None
+            task.updated_at = now
+            self._append_log(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                level="INFO",
+                message=f"workflow_engine DAG workflow succeeded on attempt {attempt_no}",
             )
             self._append_event(
                 db,

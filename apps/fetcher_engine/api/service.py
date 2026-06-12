@@ -59,6 +59,7 @@ class FetchService:
                 continue
 
             total_fetched += len(source_items)
+            self._update_cursor(subscription, source_items)
             unique_items, deduped_count = self._dedupe_source_items(source_items, seen_keys)
             total_deduped += deduped_count
 
@@ -106,9 +107,31 @@ class FetchService:
         kwargs: dict[str, Any] = {}
         if getattr(subscription, "feed_url", None):
             kwargs["feed_url"] = subscription.feed_url
+        if getattr(subscription, "source_name", None):
+            kwargs["source_name"] = subscription.source_name
         stream_key = getattr(subscription, "account_identifier", None) or f"{subscription.source_type}:{subscription.id}"
         kwargs["stream_key"] = stream_key
         return fetcher_factory(**kwargs)
+
+    def _update_cursor(self, subscription: Any, source_items: list[SourceItem]) -> None:
+        if not source_items:
+            return
+        last_item = source_items[-1]
+        cursor_value = None
+        published_at = last_item.metadata.get("published_at") if isinstance(last_item.metadata, dict) else None
+        if published_at:
+            cursor_value = str(published_at)
+        elif last_item.source_id:
+            cursor_value = last_item.source_id
+        if not cursor_value:
+            return
+        update_cursor = getattr(self.source_repo, "update_cursor", None)
+        if callable(update_cursor):
+            update_cursor(self.db_session, subscription, cursor_value)
+            return
+        subscription.last_cursor = cursor_value
+        self.db_session.add(subscription)
+        self.db_session.commit()
 
     def _dedupe_source_items(
         self,

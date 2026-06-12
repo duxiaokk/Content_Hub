@@ -6,6 +6,7 @@ from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree as ET
 
@@ -57,6 +58,7 @@ class UnifiedPost:
 @dataclass(slots=True)
 class RssFetchRequest:
     lookback_hours: int = 24
+    limit: int = 20
 
 
 @dataclass(slots=True)
@@ -217,10 +219,21 @@ class RssFeedAdapter:
                 "Accept": "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, text/html;q=0.5",
             },
         )
-        with urlopen(http_request, timeout=30) as response:
-            xml_text = response.read().decode("utf-8", errors="replace")
+        try:
+            with urlopen(http_request, timeout=30) as response:
+                xml_text = response.read().decode("utf-8", errors="replace")
+        except TimeoutError as error:
+            raise RuntimeError(f"rss fetch timeout for {self.feed_url}") from error
+        except HTTPError as error:
+            raise RuntimeError(f"rss http error for {self.feed_url}: {error.code}") from error
+        except URLError as error:
+            raise RuntimeError(f"rss network error for {self.feed_url}: {error.reason}") from error
+
         items = parse_rss_items(xml_text=xml_text, source=self.source, adapter=self.adapter_name)
         filtered_items = [item for item in items if within_lookback(item.published_at, actual_request)]
+        if actual_request.limit > 0:
+            filtered_items = filtered_items[: actual_request.limit]
+        last_item = filtered_items[-1] if filtered_items else None
         return FetchBatch(
             source=self.source,
             adapter=self.adapter_name,
@@ -231,5 +244,7 @@ class RssFeedAdapter:
                 "total_seen": len(items),
                 "new_items": len(filtered_items),
                 "stream_key": self.stream_key,
+                "cursor": last_item.published_at.isoformat() if last_item else None,
+                "last_external_id": last_item.external_id if last_item else None,
             },
         )

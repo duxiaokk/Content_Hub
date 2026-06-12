@@ -8,7 +8,7 @@
 
 | 完成 | 总计 | 进度 |
 |------|------|------|
-| 2 | 19 | 11% |
+| 3 | 19 | 16% |
 
 ---
 
@@ -25,8 +25,8 @@
 | 编号 | 任务 | 状态 | 模块 |
 |------|------|------|------|
 | [T002](tasks/T002_fetch_service_unified.md) | fetch_service_unified - 统一入口 FetchService | DONE | fetcher_engine |
-| [T003](tasks/T003_rss_fetcher_stable.md) | rss_fetcher_stable - RSS 抓取器稳定化 | IN PROGRESS | fetcher_engine |
-| [T004](tasks/T004_github_trending_fetcher.md) | github_trending_fetcher - GitHub Trending | TODO | fetcher_engine |
+| [T003](tasks/T003_rss_fetcher_stable.md) | rss_fetcher_stable - RSS 抓取器稳定化 | DONE | fetcher_engine |
+| [T004](tasks/T004_github_trending_fetcher.md) | github_trending_fetcher - GitHub Trending | IN PROGRESS | fetcher_engine |
 | [T005](tasks/T005_reddit_fetcher.md) | reddit_fetcher - Reddit 抓取器 | TODO | fetcher_engine |
 | [T006](tasks/T006_cnblogs_bilibili_fields.md) | cnblogs_bilibili_fields - CNBlogs/Bilibili 字段补齐 | TODO | fetcher_engine |
 | [T007](tasks/T007_incremental_cursor.md) | incremental_cursor - 增量控制 + 失败容错 | TODO | fetcher_engine |

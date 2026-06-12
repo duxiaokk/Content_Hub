@@ -8,7 +8,7 @@
 
 | 完成 | 总计 | 进度 |
 |------|------|------|
-| 3 | 19 | 16% |
+| 4 | 19 | 21% |
 
 ---
 
@@ -26,8 +26,8 @@
 |------|------|------|------|
 | [T002](tasks/T002_fetch_service_unified.md) | fetch_service_unified - 统一入口 FetchService | DONE | fetcher_engine |
 | [T003](tasks/T003_rss_fetcher_stable.md) | rss_fetcher_stable - RSS 抓取器稳定化 | DONE | fetcher_engine |
-| [T004](tasks/T004_github_trending_fetcher.md) | github_trending_fetcher - GitHub Trending | IN PROGRESS | fetcher_engine |
-| [T005](tasks/T005_reddit_fetcher.md) | reddit_fetcher - Reddit 抓取器 | TODO | fetcher_engine |
+| [T004](tasks/T004_github_trending_fetcher.md) | github_trending_fetcher - GitHub Trending | DONE | fetcher_engine |
+| [T005](tasks/T005_reddit_fetcher.md) | reddit_fetcher - Reddit 抓取器 | IN PROGRESS | fetcher_engine |
 | [T006](tasks/T006_cnblogs_bilibili_fields.md) | cnblogs_bilibili_fields - CNBlogs/Bilibili 字段补齐 | TODO | fetcher_engine |
 | [T007](tasks/T007_incremental_cursor.md) | incremental_cursor - 增量控制 + 失败容错 | TODO | fetcher_engine |
 
@@ -127,6 +127,9 @@ graph TD
 
 *最后更新：2026-06-11*
 ## Notes
+
+- 2026-06-12: T003 revalidated. RSS fetcher registration, empty-feed 0-item handling, cursor writeback, and RSS exception -> `FetchBatchResult.errors` integration tests now pass.
+- 2026-06-12: T004 completed. GitHub Trending fetcher is registered, parses repository cards into `SourceItem`, and degrades to `[]` on network errors. Acceptance tests pass.
 
 - 2026-06-11: T001 revalidated. Alembic `upgrade` / `downgrade` passes on a clean temp SQLite database.
 - 2026-06-11: Default workspace SQLite files under `apps/platform/*.db` still raise `disk I/O error`; keep T001 as `DONE`, but this local database file issue still needs environment cleanup or file replacement.

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from apps.fetcher_engine.api.models import FetchBatchRequest
 from apps.fetcher_engine.api.registry import FETCHER_REGISTRY
 from apps.fetcher_engine.api.service import FetchService
+from apps.fetcher_engine.connectors.github_trending.fetcher import GitHubTrendingFetcher
 from apps.fetcher_engine.connectors.rss.fetcher import RssFetcher
 from apps.fetcher_engine.runtime.rss import ParseError, RssFeedAdapter, RssFetchRequest, parse_rss_items
 from apps.workflow_engine.registry.contracts import SourceItem
@@ -407,3 +408,92 @@ def test_fetch_service_collects_rss_parse_error_in_errors():
     assert result.errors[0].source == "rss"
     assert "invalid rss payload" in result.errors[0].error
     assert result.stats.total_fetched == 0
+
+
+def test_github_trending_fetcher_is_registered():
+    FETCHER_REGISTRY["github_trending"] = GitHubTrendingFetcher
+
+    assert FETCHER_REGISTRY["github_trending"] is GitHubTrendingFetcher
+
+
+def test_github_trending_fetcher_parses_repositories():
+    html_text = """
+    <article class="Box-row">
+      <h2>
+        <a href="/openai/openai-python">
+          openai / openai-python
+        </a>
+      </h2>
+      <p class="col-9 color-fg-muted my-1 pr-4">
+        Official Python library for the OpenAI API.
+      </p>
+      <div>
+        <span itemprop="programmingLanguage">Python</span>
+        <a href="/openai/openai-python">12,345</a>
+        <a href="/openai/openai-python/forks">1,234</a>
+      </div>
+    </article>
+    """.strip()
+
+    fetcher = GitHubTrendingFetcher(language="python", since="daily")
+    repositories = fetcher._parse_trending_repositories(html_text)
+
+    assert len(repositories) == 1
+    assert repositories[0].full_name == "openai/openai-python"
+    assert repositories[0].url == "https://github.com/openai/openai-python"
+    assert repositories[0].summary == "Official Python library for the OpenAI API."
+    assert repositories[0].language == "Python"
+    assert repositories[0].stars == "12,345"
+    assert repositories[0].forks == "1,234"
+
+
+def test_github_trending_fetcher_returns_source_items():
+    fetcher = GitHubTrendingFetcher(language="python", since="weekly")
+    fetcher._fetch_trending_page = lambda: """
+    <article class="Box-row">
+      <h2><a href="/owner/repo"> owner / repo </a></h2>
+      <p class="col-9 color-fg-muted my-1 pr-4">Trending repository</p>
+      <div>
+        <span itemprop="programmingLanguage">Python</span>
+        <a href="/owner/repo">100</a>
+        <a href="/owner/repo/forks">20</a>
+      </div>
+    </article>
+    """.strip()
+
+    items = asyncio.run(
+        fetcher.fetch(
+            type(
+                "Request",
+                (),
+                {"source_name": "GitHub Trending", "lookback_hours": 24, "limit": 10, "cursor": None, "options": {}},
+            )()
+        )
+    )
+
+    assert len(items) == 1
+    assert items[0].source_id == "owner/repo"
+    assert items[0].title == "owner/repo"
+    assert items[0].source_url == "https://github.com/owner/repo"
+    assert items[0].raw_content == "Trending repository"
+    assert items[0].metadata["language"] == "Python"
+    assert items[0].metadata["stars"] == "100"
+    assert items[0].metadata["forks"] == "20"
+    assert items[0].metadata["since"] == "weekly"
+
+
+def test_github_trending_fetcher_returns_empty_list_on_network_error():
+    fetcher = GitHubTrendingFetcher()
+    fetcher._fetch_trending_page = lambda: (_ for _ in ()).throw(RuntimeError("network error"))
+
+    items = asyncio.run(
+        fetcher.fetch(
+            type(
+                "Request",
+                (),
+                {"source_name": "GitHub Trending", "lookback_hours": 24, "limit": 10, "cursor": None, "options": {}},
+            )()
+        )
+    )
+
+    assert items == []

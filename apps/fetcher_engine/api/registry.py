@@ -5,6 +5,7 @@ from typing import Any
 
 from apps.fetcher_engine.connectors.bilibili.fetcher import BilibiliFetcher
 from apps.fetcher_engine.connectors.cnblogs.fetcher import CNBlogsFetcher
+from apps.fetcher_engine.connectors.rss.fetcher import RssFetcher
 
 
 FetcherFactory = Callable[..., Any]
@@ -22,3 +23,4 @@ def get_fetcher(source_type: str) -> FetcherFactory | None:
 
 register_fetcher("cnblogs", CNBlogsFetcher)
 register_fetcher("bilibili", BilibiliFetcher)
+register_fetcher("rss", RssFetcher)

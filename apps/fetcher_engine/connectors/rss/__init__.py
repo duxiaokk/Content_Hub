@@ -1,0 +1,1 @@
+"""Generic RSS fetcher connector."""

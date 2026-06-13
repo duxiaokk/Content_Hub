@@ -1,137 +1,147 @@
-# Content Hub MVP - Codex Board
+﻿# Content Hub MVP - Codex Board
 
-> 总进度看板 · 19 个任务 · 按推荐开发顺序排列
-
+> 鎬昏繘搴︾湅鏉?路 19 涓换鍔?路 鎸夋帹鑽愬紑鍙戦『搴忔帓鍒?
 ---
 
-## 整体进度
+## 鏁翠綋杩涘害
 
-| 完成 | 总计 | 进度 |
+| 瀹屾垚 | 鎬昏 | 杩涘害 |
 |------|------|------|
-| 4 | 19 | 21% |
+| 15 | 19 | 79% |
 
 ---
 
-## Phase 1: 数据模型 (1 task)
+## Phase 1: 鏁版嵁妯″瀷 (1 task)
 
-| 编号 | 任务 | 状态 | 模块 |
+| 缂栧彿 | 浠诲姟 | 鐘舵€?| 妯″潡 |
 |------|------|------|------|
-| [T001](tasks/T001_db_migration_batch1.md) | db_migration_batch1 - 数据模型扩展 | DONE | DB |
+| [T001](tasks/T001_db_migration_batch1.md) | db_migration_batch1 - 鏁版嵁妯″瀷鎵╁睍 | DONE | DB |
 
 ---
 
 ## Phase 2: Fetcher Engine (6 tasks)
 
-| 编号 | 任务 | 状态 | 模块 |
+| 缂栧彿 | 浠诲姟 | 鐘舵€?| 妯″潡 |
 |------|------|------|------|
-| [T002](tasks/T002_fetch_service_unified.md) | fetch_service_unified - 统一入口 FetchService | DONE | fetcher_engine |
-| [T003](tasks/T003_rss_fetcher_stable.md) | rss_fetcher_stable - RSS 抓取器稳定化 | DONE | fetcher_engine |
+| [T002](tasks/T002_fetch_service_unified.md) | fetch_service_unified - 缁熶竴鍏ュ彛 FetchService | DONE | fetcher_engine |
+| [T003](tasks/T003_rss_fetcher_stable.md) | rss_fetcher_stable - RSS 鎶撳彇鍣ㄧǔ瀹氬寲 | DONE | fetcher_engine |
 | [T004](tasks/T004_github_trending_fetcher.md) | github_trending_fetcher - GitHub Trending | DONE | fetcher_engine |
-| [T005](tasks/T005_reddit_fetcher.md) | reddit_fetcher - Reddit 抓取器 | IN PROGRESS | fetcher_engine |
-| [T006](tasks/T006_cnblogs_bilibili_fields.md) | cnblogs_bilibili_fields - CNBlogs/Bilibili 字段补齐 | TODO | fetcher_engine |
-| [T007](tasks/T007_incremental_cursor.md) | incremental_cursor - 增量控制 + 失败容错 | TODO | fetcher_engine |
+| [T005](tasks/T005_reddit_fetcher.md) | reddit_fetcher - Reddit 鎶撳彇鍣?| DONE | fetcher_engine |
+| [T006](tasks/T006_cnblogs_bilibili_fields.md) | cnblogs_bilibili_fields - CNBlogs/Bilibili 瀛楁琛ラ綈 | DONE | fetcher_engine |
+| [T007](tasks/T007_incremental_cursor.md) | incremental_cursor - 澧為噺鎺у埗 + 澶辫触瀹归敊 | DONE | fetcher_engine |
 
 ---
 
 ## Phase 3: AI Processor (2 tasks)
 
-| 编号 | 任务 | 状态 | 模块 |
+| 缂栧彿 | 浠诲姟 | 鐘舵€?| 妯″潡 |
 |------|------|------|------|
-| [T008](tasks/T008_ai_summarize_classify_tag.md) | ai_summarize_classify_tag - 摘要/分类/标签 | TODO | ai_processor |
-| [T009](tasks/T009_ai_rewrite_config.md) | ai_rewrite_config - 改写处理器 + 统一配置 | TODO | ai_processor |
+| [T008](tasks/T008_ai_summarize_classify_tag.md) | ai_summarize_classify_tag - 鎽樿/鍒嗙被/鏍囩 | DONE | ai_processor |
+| [T009](tasks/T009_ai_rewrite_config.md) | ai_rewrite_config - 鏀瑰啓澶勭悊鍣?+ 缁熶竴閰嶇疆 | DONE | ai_processor |
 
 ---
 
 ## Phase 4: Workflow Engine (2 tasks)
 
-| 编号 | 任务 | 状态 | 模块 |
+| 缂栧彿 | 浠诲姟 | 鐘舵€?| 妯″潡 |
 |------|------|------|------|
-| [T010](tasks/T010_workflow_radar_template.md) | workflow_radar_template - radar_pipeline 节点定义 | TODO | workflow_engine |
-| [T011](tasks/T011_workflow_trace_idempotency.md) | workflow_trace_idempotency - 运行轨迹 + 幂等控制 | TODO | workflow_engine |
+| [T010](tasks/T010_workflow_radar_template.md) | workflow_radar_template - radar_pipeline 鑺傜偣瀹氫箟 | DONE | workflow_engine |
+| [T011](tasks/T011_workflow_trace_idempotency.md) | workflow_trace_idempotency - 杩愯杞ㄨ抗 + 骞傜瓑鎺у埗 | DONE | workflow_engine |
 
 ---
 
 ## Phase 5: Platform API (3 tasks)
 
-| 编号 | 任务 | 状态 | 模块 |
+| 缂栧彿 | 浠诲姟 | 鐘舵€?| 妯″潡 |
 |------|------|------|------|
-| [T012](tasks/T012_platform_source_api.md) | platform_source_api - 信源管理 CRUD API | TODO | platform |
-| [T013](tasks/T013_platform_review_api.md) | platform_review_api - 审核队列 API | TODO | platform |
-| [T014](tasks/T014_platform_digest_api.md) | platform_digest_api - 日报 API | TODO | platform |
+| [T012](tasks/T012_platform_source_api.md) | platform_source_api - 淇℃簮绠＄悊 CRUD API | DONE | platform |
+| [T013](tasks/T013_platform_review_api.md) | platform_review_api - 瀹℃牳闃熷垪 API | DONE | platform |
+| [T014](tasks/T014_platform_digest_api.md) | platform_digest_api - 鏃ユ姤 API | DONE | platform |
 
 ---
 
 ## Phase 6: Publisher Engine (2 tasks)
 
-| 编号 | 任务 | 状态 | 模块 |
+| 缂栧彿 | 浠诲姟 | 鐘舵€?| 妯″潡 |
 |------|------|------|------|
-| [T015](tasks/T015_publisher_markdown.md) | publisher_markdown - Markdown 日报生成器 | TODO | publisher_engine |
-| [T016](tasks/T016_publisher_blog_draft.md) | publisher_blog_draft - 博客草稿发布 + 发布记录 | TODO | publisher_engine |
+| [T015](tasks/T015_publisher_markdown.md) | publisher_markdown - Markdown 鏃ユ姤鐢熸垚鍣?| DONE | publisher_engine |
+| [T016](tasks/T016_publisher_blog_draft.md) | publisher_blog_draft - 鍗氬鑽夌鍙戝竷 + 鍙戝竷璁板綍 | IN PROGRESS | publisher_engine |
 
 ---
 
 ## Phase 7: Scheduler + Frontend + Tests (3 tasks)
 
-| 编号 | 任务 | 状态 | 模块 |
+| 缂栧彿 | 浠诲姟 | 鐘舵€?| 妯″潡 |
 |------|------|------|------|
-| [T017](tasks/T017_scheduler_cron.md) | scheduler_cron - 定时任务配置 | TODO | scheduler_center |
-| [T018](tasks/T018_frontend_minimal_pages.md) | frontend_minimal_pages - 前端最小页面 | TODO | frontend |
-| [T019](tasks/T019_tests_and_config.md) | tests_and_config - 测试 + 配置整理 | TODO | tests |
+| [T017](tasks/T017_scheduler_cron.md) | scheduler_cron - 瀹氭椂浠诲姟閰嶇疆 | TODO | scheduler_center |
+| [T018](tasks/T018_frontend_minimal_pages.md) | frontend_minimal_pages - 鍓嶇鏈€灏忛〉闈?| TODO | frontend |
+| [T019](tasks/T019_tests_and_config.md) | tests_and_config - 娴嬭瘯 + 閰嶇疆鏁寸悊 | TODO | tests |
 
 ---
 
-## 任务依赖图
-
+## 浠诲姟渚濊禆鍥?
 ```mermaid
 graph TD
-    T001["T001: 数据模型"] --> T002["T002: FetchService"]
-    T001 --> T010["T010: Workflow 模板"]
-    T001 --> T012["T012: 信源 CRUD"]
-    T002 --> T003["T003: RSS 稳定化"]
+    T001["T001: 鏁版嵁妯″瀷"] --> T002["T002: FetchService"]
+    T001 --> T010["T010: Workflow 妯℃澘"]
+    T001 --> T012["T012: 淇℃簮 CRUD"]
+    T002 --> T003["T003: RSS 绋冲畾鍖?]
     T002 --> T004["T004: GitHub Trending"]
     T002 --> T005["T005: Reddit"]
     T002 --> T006["T006: CNBlogs/Bilibili"]
-    T003 --> T007["T007: 增量控制"]
+    T003 --> T007["T007: 澧為噺鎺у埗"]
     T004 --> T007
     T005 --> T007
     T006 --> T007
-    T007 --> T008["T008: AI 摘要/分类/标签"]
-    T008 --> T009["T009: AI 改写 + 配置"]
+    T007 --> T008["T008: AI 鎽樿/鍒嗙被/鏍囩"]
+    T008 --> T009["T009: AI 鏀瑰啓 + 閰嶇疆"]
     T009 --> T010
-    T010 --> T011["T011: 运行轨迹 + 幂等"]
-    T012 --> T013["T013: 审核队列 API"]
+    T010 --> T011["T011: 杩愯杞ㄨ抗 + 骞傜瓑"]
+    T012 --> T013["T013: 瀹℃牳闃熷垪 API"]
     T011 --> T013
-    T013 --> T014["T014: 日报 API"]
-    T011 --> T015["T015: Markdown 日报"]
-    T013 --> T016["T016: 博客草稿发布"]
-    T015 --> T017["T017: 定时任务"]
+    T013 --> T014["T014: 鏃ユ姤 API"]
+    T011 --> T015["T015: Markdown 鏃ユ姤"]
+    T013 --> T016["T016: 鍗氬鑽夌鍙戝竷"]
+    T015 --> T017["T017: 瀹氭椂浠诲姟"]
     T016 --> T017
-    T012 --> T018["T018: 前端页面"]
+    T012 --> T018["T018: 鍓嶇椤甸潰"]
     T014 --> T018
-    T017 --> T019["T019: 测试 + 配置"]
+    T017 --> T019["T019: 娴嬭瘯 + 閰嶇疆"]
 ```
 
 ---
 
-## 里程碑验收
-
-| 里程碑 | 涉及任务 | 验收标准 |
+## 閲岀▼纰戦獙鏀?
+| 閲岀▼纰?| 娑夊強浠诲姟 | 楠屾敹鏍囧噯 |
 |--------|----------|----------|
-| M1: 抓取闭环 | T001~T007 | 可配置至少 3 个信源；抓取结果统一入库；支持去重和关键词过滤 |
-| M2: AI 处理闭环 | T008~T009 | 可生成摘要；可生成中文改写稿；处理失败有明确降级 |
-| M3: 审核闭环 | T010~T013 | 控制台可查看待审核内容；可通过/驳回/归档；可编辑最终稿 |
-| M4: 发布闭环 | T014~T016 | 审核通过后可生成博客草稿；可生成日报 Markdown；可查看发布结果记录 |
-| M5: 调度闭环 | T017~T019 | 每天 09:00 自动运行；可查看运行状态和错误信息；重跑不重复发布 |
+| M1: 鎶撳彇闂幆 | T001~T007 | 鍙厤缃嚦灏?3 涓俊婧愶紱鎶撳彇缁撴灉缁熶竴鍏ュ簱锛涙敮鎸佸幓閲嶅拰鍏抽敭璇嶈繃婊?|
+| M2: AI 澶勭悊闂幆 | T008~T009 | 鍙敓鎴愭憳瑕侊紱鍙敓鎴愪腑鏂囨敼鍐欑锛涘鐞嗗け璐ユ湁鏄庣‘闄嶇骇 |
+| M3: 瀹℃牳闂幆 | T010~T013 | 鎺у埗鍙板彲鏌ョ湅寰呭鏍稿唴瀹癸紱鍙€氳繃/椹冲洖/褰掓。锛涘彲缂栬緫鏈€缁堢 |
+| M4: 鍙戝竷闂幆 | T014~T016 | 瀹℃牳閫氳繃鍚庡彲鐢熸垚鍗氬鑽夌锛涘彲鐢熸垚鏃ユ姤 Markdown锛涘彲鏌ョ湅鍙戝竷缁撴灉璁板綍 |
+| M5: 璋冨害闂幆 | T017~T019 | 姣忓ぉ 09:00 鑷姩杩愯锛涘彲鏌ョ湅杩愯鐘舵€佸拰閿欒淇℃伅锛涢噸璺戜笉閲嶅鍙戝竷 |
 
 ---
 
-*最后更新：2026-06-11*
+*鏈€鍚庢洿鏂帮細2026-06-11*
+
 ## Notes
 
 - 2026-06-12: T003 revalidated. RSS fetcher registration, empty-feed 0-item handling, cursor writeback, and RSS exception -> `FetchBatchResult.errors` integration tests now pass.
 - 2026-06-12: T004 completed. GitHub Trending fetcher is registered, parses repository cards into `SourceItem`, and degrades to `[]` on network errors. Acceptance tests pass.
-
+- 2026-06-12: T005 completed. Reddit fetcher now reads public subreddit JSON, maps posts into `SourceItem`, and returns `[]` on 404/network failures. Acceptance tests pass.
+- 2026-06-12: T006 completed. CNBlogs and Bilibili fetchers now fill normalized source metadata, summary, URL, and published time fields. Acceptance tests pass.
+- 2026-06-12: T007 completed. FetchService now stores JSON cursors, filters incrementally across runs, and reports per-source success/failure stats. Acceptance tests pass.
+- 2026-06-12: T008 completed. Summarize, classify, and tag processors now run with fallback behavior and can write summary/tags/score back to content_items. Acceptance tests pass.
+- 2026-06-12: T009 completed. Rewrite processing now loads profile-aware config, applies score threshold gating, and writes rewritten fields back to content_items. Acceptance tests pass.
+- 2026-06-12: T010 completed. radar_pipeline template, filter node, workflow contracts, and radar service flow are now available. Acceptance tests pass.
+- 2026-06-12: T011 completed. workflow_run persistence, step-level trace payload, token cost aggregation, and publish idempotency checks were added. Workflow tests pass.
+- 2026-06-12: T012 completed. Source subscription CRUD API, source service layer, and source API tests are now available. Acceptance tests pass.
+- 2026-06-12: T013 completed. Review queue list/detail/approve/reject/archive APIs are now available, including edited-content approval flow. Acceptance tests pass.
+- 2026-06-12: T014 completed. Digest list/detail/generate/download APIs are now available, and approved content can be assembled into persisted markdown digests. Acceptance tests pass.
+- 2026-06-13: T015 completed. Markdown digest publisher now writes dated files under `CONTENT_HUB_DIGEST_OUTPUT_DIR`, digest generation routes through `publisher_engine`, and success/failed publish records are persisted with platform API coverage. Acceptance tests pass.
 - 2026-06-11: T001 revalidated. Alembic `upgrade` / `downgrade` passes on a clean temp SQLite database.
 - 2026-06-11: Default workspace SQLite files under `apps/platform/*.db` still raise `disk I/O error`; keep T001 as `DONE`, but this local database file issue still needs environment cleanup or file replacement.
+- 2026-06-12: T011 Alembic path import issue is fixed in `migrations/env.py`, but SQLite migration commands still hit environment-level `disk I/O error` on local file databases during `alembic upgrade/current/downgrade`.
+- 2026-06-12: Pytest cache now targets `.tmp/.pytest_cache`, but this workspace still denies creation of pytest atomic temp directories (`pytest-cache-files-*`), so cache warnings may persist until filesystem permissions are fixed.
 
-*?????2026-06-11*
+*?????2026-06-12*

@@ -32,3 +32,21 @@ class DraftPayload:
             "tags": list(self.tags),
             "raw_payload": dict(self.raw_payload),
         }
+
+
+@dataclass(slots=True)
+class DigestPublishResult:
+    title: str
+    content_markdown: str
+    file_path: str
+    included_count: int
+    generated_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "title": self.title,
+            "content_markdown": self.content_markdown,
+            "file_path": self.file_path,
+            "included_count": self.included_count,
+            "generated_at": self.generated_at,
+        }

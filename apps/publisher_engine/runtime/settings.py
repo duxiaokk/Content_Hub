@@ -14,3 +14,4 @@ class PublisherSettings:
     internal_token: str = os.getenv("ADO_INTERNAL_TOKEN", "local-dev-internal-token")
     timeout_seconds: float = float(os.getenv("ADO_PUBLISH_TIMEOUT_SECONDS", "15"))
     source_platform: str = os.getenv("ADO_SOURCE_PLATFORM", "cnblogs")
+    digest_output_dir: str = os.getenv("CONTENT_HUB_DIGEST_OUTPUT_DIR", ".tmp/digests")

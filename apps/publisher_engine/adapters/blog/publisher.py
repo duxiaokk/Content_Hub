@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from publisher_engine.runtime.base import BasePublisher
 from publisher_engine.runtime.client import BlogPublishingClient
-from publisher_engine.runtime.models import DraftPayload
+from publisher_engine.runtime.models import DraftPayload, PublishRequest, PublishResponse
 from publisher_engine.runtime.settings import PublisherSettings
 from workflow_engine.registry.contracts import ContentAsset, PublishResult, PublishTarget
 
@@ -52,4 +52,33 @@ class BlogPublisher(BasePublisher):
                 "response_text": result.response_text,
                 "endpoint_url": publishing_settings.endpoint_url,
             },
+        )
+
+    async def publish_draft(self, request: PublishRequest) -> PublishResponse:
+        content = ContentAsset(
+            content_id=request.content_item_id,
+            source_type=str(request.options.get("source_type", "content_hub")),
+            source_id=str(request.options.get("source_id", request.content_item_id)),
+            title=request.candidate_title,
+            raw_content=request.candidate_content,
+            processed_content=request.candidate_content,
+            source_url=request.source_url,
+            metadata={"tags": list(request.tags)},
+        )
+        target = PublishTarget(
+            target_name="blog",
+            options={
+                **dict(request.options),
+                "mode": str(request.options.get("mode", "draft")),
+                "tags": list(request.tags),
+            },
+        )
+        result = await self.publish(content, target)
+        return PublishResponse(
+            content_item_id=request.content_item_id,
+            target_type=request.target_type,
+            status="success" if result.status == "published" else "failed",
+            external_url=result.url,
+            external_id=result.external_id,
+            message=result.error_message or result.status,
         )

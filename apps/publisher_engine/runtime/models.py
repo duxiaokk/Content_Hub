@@ -50,3 +50,45 @@ class DigestPublishResult:
             "included_count": self.included_count,
             "generated_at": self.generated_at,
         }
+
+
+@dataclass(slots=True)
+class PublishRequest:
+    content_item_id: int
+    candidate_title: str
+    candidate_content: str
+    target_type: str
+    source_url: str | None = None
+    tags: list[str] = field(default_factory=list)
+    options: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "content_item_id": self.content_item_id,
+            "candidate_title": self.candidate_title,
+            "candidate_content": self.candidate_content,
+            "target_type": self.target_type,
+            "source_url": self.source_url,
+            "tags": list(self.tags),
+            "options": dict(self.options),
+        }
+
+
+@dataclass(slots=True)
+class PublishResponse:
+    content_item_id: int
+    target_type: str
+    status: str
+    external_url: str | None
+    external_id: str | None
+    message: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "content_item_id": self.content_item_id,
+            "target_type": self.target_type,
+            "status": self.status,
+            "external_url": self.external_url,
+            "external_id": self.external_id,
+            "message": self.message,
+        }

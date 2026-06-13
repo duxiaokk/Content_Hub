@@ -7,7 +7,7 @@
 
 | 瀹屾垚 | 鎬昏 | 杩涘害 |
 |------|------|------|
-| 15 | 19 | 79% |
+| 16 | 19 | 84% |
 
 ---
 
@@ -65,7 +65,7 @@
 | 缂栧彿 | 浠诲姟 | 鐘舵€?| 妯″潡 |
 |------|------|------|------|
 | [T015](tasks/T015_publisher_markdown.md) | publisher_markdown - Markdown 鏃ユ姤鐢熸垚鍣?| DONE | publisher_engine |
-| [T016](tasks/T016_publisher_blog_draft.md) | publisher_blog_draft - 鍗氬鑽夌鍙戝竷 + 鍙戝竷璁板綍 | IN PROGRESS | publisher_engine |
+| [T016](tasks/T016_publisher_blog_draft.md) | publisher_blog_draft - 鍗氬鑽夌鍙戝竷 + 鍙戝竷璁板綍 | DONE | publisher_engine |
 
 ---
 
@@ -73,7 +73,7 @@
 
 | 缂栧彿 | 浠诲姟 | 鐘舵€?| 妯″潡 |
 |------|------|------|------|
-| [T017](tasks/T017_scheduler_cron.md) | scheduler_cron - 瀹氭椂浠诲姟閰嶇疆 | TODO | scheduler_center |
+| [T017](tasks/T017_scheduler_cron.md) | scheduler_cron - 瀹氭椂浠诲姟閰嶇疆 | IN PROGRESS | scheduler_center |
 | [T018](tasks/T018_frontend_minimal_pages.md) | frontend_minimal_pages - 鍓嶇鏈€灏忛〉闈?| TODO | frontend |
 | [T019](tasks/T019_tests_and_config.md) | tests_and_config - 娴嬭瘯 + 閰嶇疆鏁寸悊 | TODO | tests |
 
@@ -139,6 +139,7 @@ graph TD
 - 2026-06-12: T013 completed. Review queue list/detail/approve/reject/archive APIs are now available, including edited-content approval flow. Acceptance tests pass.
 - 2026-06-12: T014 completed. Digest list/detail/generate/download APIs are now available, and approved content can be assembled into persisted markdown digests. Acceptance tests pass.
 - 2026-06-13: T015 completed. Markdown digest publisher now writes dated files under `CONTENT_HUB_DIGEST_OUTPUT_DIR`, digest generation routes through `publisher_engine`, and success/failed publish records are persisted with platform API coverage. Acceptance tests pass.
+- 2026-06-13: T016 completed. Blog draft publishing now writes unpublished posts, persists success/failed publish records, marks content items as published, and skips duplicate blog publishes. Acceptance tests pass.
 - 2026-06-11: T001 revalidated. Alembic `upgrade` / `downgrade` passes on a clean temp SQLite database.
 - 2026-06-11: Default workspace SQLite files under `apps/platform/*.db` still raise `disk I/O error`; keep T001 as `DONE`, but this local database file issue still needs environment cleanup or file replacement.
 - 2026-06-12: T011 Alembic path import issue is fixed in `migrations/env.py`, but SQLite migration commands still hit environment-level `disk I/O error` on local file databases during `alembic upgrade/current/downgrade`.

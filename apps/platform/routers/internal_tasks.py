@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from core.config import settings
 from scheduler_client import get_scheduler_client
+from scheduler_center.config import CONTENT_PIPELINE_DAILY_DIGEST, CONTENT_PIPELINE_RADAR
 from schemas.pipeline import LinearPipelineRunRequest
 
 
@@ -37,6 +38,21 @@ class ContentWorkflowRunRequest(BaseModel):
     fetch_options: dict[str, Any] = Field(default_factory=dict)
     process_options: dict[str, Any] = Field(default_factory=dict)
     publish_options: dict[str, Any] = Field(default_factory=dict)
+    trace_id: str | None = None
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
+class RadarPipelineRunRequest(BaseModel):
+    limit: int = Field(default=20, ge=1, le=200)
+    source_type: str | None = None
+    filter_config: dict[str, Any] = Field(default_factory=dict)
+    process_options: dict[str, Any] = Field(default_factory=dict)
+    trace_id: str | None = None
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
+class DailyDigestRunRequest(BaseModel):
+    lookback_hours: int = Field(default=24, ge=1, le=720)
     trace_id: str | None = None
     idempotency_key: str | None = Field(default=None, max_length=128)
 
@@ -114,4 +130,56 @@ def trigger_content_workflow(
         "task_id": submit.get("id"),
         "trace_id": submit.get("trace_id") or trace_id,
         "task_type": "content.workflow.run",
+    }
+
+
+@router.post("/content-pipeline/radar/run")
+def trigger_radar_pipeline(
+    request: Request,
+    body: RadarPipelineRunRequest,
+):
+    _verify_internal_token(request)
+    trace_id = (body.trace_id or "").strip() or str(uuid.uuid4())
+    payload = {
+        "workflow_name": "radar_pipeline",
+        "limit": body.limit,
+        "source_type": body.source_type,
+        "filter_config": body.filter_config,
+        "process_options": body.process_options,
+        "trigger_type": "manual",
+    }
+    submit = get_scheduler_client().submit_task(
+        task_type=CONTENT_PIPELINE_RADAR,
+        payload=payload,
+        trace_id=trace_id,
+        idempotency_key=body.idempotency_key,
+    )
+    return {
+        "task_id": submit.get("id"),
+        "trace_id": submit.get("trace_id") or trace_id,
+        "task_type": CONTENT_PIPELINE_RADAR,
+    }
+
+
+@router.post("/content-pipeline/daily-digest/run")
+def trigger_daily_digest_pipeline(
+    request: Request,
+    body: DailyDigestRunRequest,
+):
+    _verify_internal_token(request)
+    trace_id = (body.trace_id or "").strip() or str(uuid.uuid4())
+    payload = {
+        "lookback_hours": body.lookback_hours,
+        "trigger_type": "manual",
+    }
+    submit = get_scheduler_client().submit_task(
+        task_type=CONTENT_PIPELINE_DAILY_DIGEST,
+        payload=payload,
+        trace_id=trace_id,
+        idempotency_key=body.idempotency_key,
+    )
+    return {
+        "task_id": submit.get("id"),
+        "trace_id": submit.get("trace_id") or trace_id,
+        "task_type": CONTENT_PIPELINE_DAILY_DIGEST,
     }

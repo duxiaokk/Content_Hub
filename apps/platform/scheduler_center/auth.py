@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request, status
 
-from scheduler_center.config import scheduler_settings
+from apps.platform.scheduler_center.config import scheduler_settings
 
 
 def verify_internal_token(request: Request) -> None:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from workflow_engine.registry.contracts import ContentAsset, PublishResult, PublishTarget, Publisher
+from apps.workflow_engine.registry.contracts import ContentAsset, PublishResult, PublishTarget, Publisher
 
 
 class BasePublisher(Publisher):

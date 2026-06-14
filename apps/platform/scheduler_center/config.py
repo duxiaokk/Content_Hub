@@ -19,6 +19,8 @@ except Exception:
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+CONTENT_PIPELINE_RADAR = "content.pipeline.radar"
+CONTENT_PIPELINE_DAILY_DIGEST = "content.pipeline.daily_digest"
 
 
 def _parse_int(value: str | None, default: int) -> int:
@@ -138,6 +140,13 @@ class SchedulerSettings(BaseSettings):
             "SCHEDULER_DISABLE_DISPATCHER", "scheduler_disable_dispatcher"
         ),
     )
+    scheduler_cron_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "CONTENT_HUB_SCHEDULER_ENABLED",
+            "scheduler_cron_enabled",
+        ),
+    )
     scheduler_submit_write_logs: bool = Field(
         default=False,
         validation_alias=AliasChoices(
@@ -209,6 +218,34 @@ class SchedulerSettings(BaseSettings):
         path = str(Path(self.scheduler_db_path)).replace(os.sep, "/")
         return f"sqlite:///{path}"
 
+    @property
+    def scheduled_jobs(self) -> list[dict[str, object]]:
+        return [
+            {
+                "task_type": CONTENT_PIPELINE_RADAR,
+                "cron_expression": "0 9 * * *",
+                "payload": {
+                    "workflow_name": "radar_pipeline",
+                    "limit": 20,
+                    "source_type": None,
+                    "trigger_type": "scheduled",
+                    "filter_config": {
+                        "keywords": ["agent", "rag", "openai", "llm"],
+                        "exclude_keywords": ["招聘", "广告"],
+                    },
+                    "process_options": {"rewrite_profile": "zh_tech_blog"},
+                },
+            },
+            {
+                "task_type": CONTENT_PIPELINE_DAILY_DIGEST,
+                "cron_expression": "15 9 * * *",
+                "payload": {
+                    "lookback_hours": 24,
+                    "trigger_type": "scheduled",
+                },
+            },
+        ]
+
 
 def _load_fallback_settings() -> SchedulerSettings:
     return SchedulerSettings.model_validate(
@@ -250,6 +287,9 @@ def _load_fallback_settings() -> SchedulerSettings:
             ),
             "SCHEDULER_DISABLE_DISPATCHER": _parse_bool(
                 os.getenv("SCHEDULER_DISABLE_DISPATCHER"), False
+            ),
+            "CONTENT_HUB_SCHEDULER_ENABLED": _parse_bool(
+                os.getenv("CONTENT_HUB_SCHEDULER_ENABLED"), True
             ),
             "SCHEDULER_SUBMIT_WRITE_LOGS": _parse_bool(
                 os.getenv("SCHEDULER_SUBMIT_WRITE_LOGS"), False

@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from scheduler_center.config import scheduler_settings
+from apps.platform.scheduler_center.config import scheduler_settings
 
 logger = logging.getLogger(__name__)
 

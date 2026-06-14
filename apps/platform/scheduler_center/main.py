@@ -27,9 +27,12 @@ async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     if not scheduler_settings.scheduler_disable_dispatcher:
         dispatcher.start()
+    if scheduler_settings.scheduler_cron_enabled:
+        dispatcher.start_cron()
     try:
         yield
     finally:
+        dispatcher.stop_cron()
         dispatcher.stop()
 
 

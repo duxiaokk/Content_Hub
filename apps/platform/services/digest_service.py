@@ -7,7 +7,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from apps.publisher_engine.api.service import PublishingService
-from models import ContentItem, DigestReport, PublishRecord
+from apps.platform.models import ContentItem, DigestReport, PublishRecord
 
 
 def _utcnow() -> datetime:

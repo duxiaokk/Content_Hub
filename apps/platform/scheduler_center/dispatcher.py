@@ -13,22 +13,20 @@ import httpx
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from scheduler_center.config import scheduler_settings
-from scheduler_center.database import SessionLocal
-from scheduler_center.models import (
+from apps.platform.scheduler_center import _ensure_stdlib_platform
+from apps.platform.scheduler_center.config import (
+    CONTENT_PIPELINE_DAILY_DIGEST,
+    CONTENT_PIPELINE_RADAR,
+    scheduler_settings,
+)
+from apps.platform.scheduler_center.database import SessionLocal
+from apps.platform.scheduler_center.models import (
     SchedulerAgent,
     SchedulerTask,
     SchedulerTaskAttempt,
     SchedulerTaskEvent,
     SchedulerTaskLog,
 )
-
-from scheduler_center import _ensure_stdlib_platform
-from workflow_engine.api.service import WorkflowEngineService
-from workflow_engine.pipeline.linear_pipeline import LinearPipelineRunner, LinearPipelineSpec
-from workflow_engine.pipeline.payloads import LinearPipelinePayload
-from workflow_engine.registry.bootstrap import build_default_registry
-from workflow_engine.registry.static_registry import registry
 
 _ensure_stdlib_platform()
 
@@ -53,12 +51,15 @@ class SchedulerDispatcher:
     def __init__(self) -> None:
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self._cron_stop_event = threading.Event()
+        self._cron_thread: Optional[threading.Thread] = None
         self._executor = ThreadPoolExecutor(max_workers=scheduler_settings.scheduler_max_concurrency)
         self._running: dict[str, Future[Any]] = {}
         self._running_lock = threading.Lock()
         self._rr_lock = threading.Lock()
         self._rr_index = 0
         self._registry_built = False
+        self._last_scheduled_minute: str | None = None
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -73,6 +74,18 @@ class SchedulerDispatcher:
             self._thread.join(timeout=wait_seconds)
         self._executor.shutdown(wait=False, cancel_futures=True)
 
+    def start_cron(self) -> None:
+        if self._cron_thread and self._cron_thread.is_alive():
+            return
+        self._cron_stop_event.clear()
+        self._cron_thread = threading.Thread(target=self._run_cron, name="scheduler-cron", daemon=True)
+        self._cron_thread.start()
+
+    def stop_cron(self, wait_seconds: float = 3.0) -> None:
+        self._cron_stop_event.set()
+        if self._cron_thread:
+            self._cron_thread.join(timeout=wait_seconds)
+
     def _run(self) -> None:
         self._recover_running_tasks()
         while not self._stop_event.is_set():
@@ -81,6 +94,14 @@ class SchedulerDispatcher:
             except Exception:
                 pass
             time.sleep(max(0.05, scheduler_settings.scheduler_poll_interval_seconds))
+
+    def _run_cron(self) -> None:
+        while not self._cron_stop_event.is_set():
+            try:
+                self._run_scheduled_jobs_once()
+            except Exception:
+                pass
+            time.sleep(30.0)
 
     def _recover_running_tasks(self) -> None:
         db = SessionLocal()
@@ -178,6 +199,94 @@ class SchedulerDispatcher:
                     done_ids.append(task_id)
             for task_id in done_ids:
                 self._running.pop(task_id, None)
+
+    def _run_scheduled_jobs_once(self, now: datetime | None = None) -> list[str]:
+        current = now or _utcnow()
+        minute_key = current.strftime("%Y-%m-%d %H:%M")
+        if self._last_scheduled_minute == minute_key:
+            return []
+
+        dispatched: list[str] = []
+        for job in scheduler_settings.scheduled_jobs:
+            cron_expression = str(job.get("cron_expression") or "").strip()
+            if self._cron_matches(cron_expression, current):
+                task_id = self.dispatch_scheduled_task(
+                    task_type=str(job["task_type"]),
+                    payload=dict(job.get("payload") or {}),
+                    scheduled_for=current,
+                )
+                dispatched.append(task_id)
+
+        if dispatched:
+            self._last_scheduled_minute = minute_key
+        return dispatched
+
+    def dispatch_scheduled_task(
+        self,
+        *,
+        task_type: str,
+        payload: dict[str, Any],
+        scheduled_for: datetime | None = None,
+    ) -> str:
+        db = SessionLocal()
+        try:
+            now = scheduled_for or _utcnow()
+            task_id = new_task_id()
+            trace_id = str(uuid.uuid4())
+            task = SchedulerTask(
+                id=task_id,
+                idempotency_key=f"{task_type}:{now.strftime('%Y-%m-%dT%H:%M')}",
+                trace_id=trace_id,
+                task_type=task_type,
+                payload_json=json.dumps(payload, ensure_ascii=False),
+                status=TaskStatus.PENDING,
+                cancel_requested=0,
+                max_retries=0,
+                retry_delay_seconds=0.0,
+                attempt_count=0,
+                next_run_at=None,
+                last_agent=None,
+                result_json=None,
+                last_error=None,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(task)
+            self._append_log(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                level="INFO",
+                message=f"scheduled task submitted: {task_type}",
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="SUBMITTED",
+                from_status=None,
+                to_status=TaskStatus.PENDING,
+                attempt_no=0,
+                message="submitted by cron scheduler",
+            )
+            db.commit()
+            return task_id
+        finally:
+            db.close()
+
+    @staticmethod
+    def _cron_matches(cron_expression: str, now: datetime) -> bool:
+        parts = cron_expression.split()
+        if len(parts) != 5:
+            return False
+        minute, hour, day, month, weekday = parts
+        return (
+            minute == str(now.minute)
+            and hour == str(now.hour)
+            and day == "*"
+            and month == "*"
+            and weekday == "*"
+        )
 
     def _choose_agent_from_endpoints(self) -> Optional[str]:
         endpoints = scheduler_settings.scheduler_agent_endpoints
@@ -305,6 +414,24 @@ class SchedulerDispatcher:
 
             if task.task_type == "content.workflow.run":
                 self._execute_content_workflow(
+                    db=db,
+                    task=task,
+                    attempt_no=attempt_no,
+                    payload=payload,
+                )
+                return
+
+            if task.task_type == CONTENT_PIPELINE_RADAR:
+                self._execute_scheduled_radar(
+                    db=db,
+                    task=task,
+                    attempt_no=attempt_no,
+                    payload=payload,
+                )
+                return
+
+            if task.task_type == CONTENT_PIPELINE_DAILY_DIGEST:
+                self._execute_scheduled_daily_digest(
                     db=db,
                     task=task,
                     attempt_no=attempt_no,
@@ -518,6 +645,11 @@ class SchedulerDispatcher:
         db.refresh(attempt)
 
         try:
+            from apps.workflow_engine.pipeline.linear_pipeline import LinearPipelineRunner, LinearPipelineSpec
+            from apps.workflow_engine.pipeline.payloads import LinearPipelinePayload
+            from apps.workflow_engine.registry.bootstrap import build_default_registry
+            from apps.workflow_engine.registry.static_registry import registry
+
             if not self._registry_built:
                 build_default_registry()
                 self._registry_built = True
@@ -619,8 +751,10 @@ class SchedulerDispatcher:
         db.commit()
         db.refresh(attempt)
 
-        service = WorkflowEngineService()
         try:
+            from apps.workflow_engine.api.service import WorkflowEngineService
+
+            service = WorkflowEngineService()
             result_obj = asyncio.run(
                 service.run_content_workflow(
                     workflow_name=str(payload.get("workflow_name") or "content.workflow.run"),
@@ -687,6 +821,190 @@ class SchedulerDispatcher:
                 str(exc),
                 retryable=False,
             )
+
+    def _execute_scheduled_radar(
+        self,
+        *,
+        db: Session,
+        task: SchedulerTask,
+        attempt_no: int,
+        payload: dict[str, Any],
+    ) -> None:
+        trace_id = task.trace_id or str(uuid.uuid4())
+        attempt = SchedulerTaskAttempt(
+            task_id=task.id,
+            attempt_no=attempt_no,
+            agent="scheduler-radar",
+            trace_id=trace_id,
+            status=TaskStatus.RUNNING,
+            started_at=_utcnow(),
+            request_url="local://workflow_engine/radar_pipeline",
+            request_json=json.dumps(payload, ensure_ascii=False)[:20000],
+        )
+        db.add(attempt)
+        task.last_agent = "scheduler-radar"
+        task.updated_at = _utcnow()
+        self._append_event(
+            db,
+            task_id=task.id,
+            trace_id=trace_id,
+            event_type="ATTEMPT_STARTED",
+            from_status=TaskStatus.RUNNING,
+            to_status=TaskStatus.RUNNING,
+            attempt_no=attempt_no,
+            message="executing scheduled radar pipeline",
+        )
+        db.commit()
+        db.refresh(attempt)
+
+        try:
+            from apps.workflow_engine.api.service import WorkflowEngineService
+
+            service = WorkflowEngineService()
+            result_obj = asyncio.run(
+                service.run_radar_pipeline(
+                    {
+                        **payload,
+                        "run_id": trace_id,
+                        "trigger_type": str(payload.get("trigger_type") or "scheduled"),
+                    }
+                )
+            )
+            now = _utcnow()
+            attempt.status = TaskStatus.SUCCEEDED
+            attempt.finished_at = now
+            attempt.response_text = json.dumps(result_obj, ensure_ascii=False)[:20000]
+            task.status = TaskStatus.SUCCEEDED
+            task.attempt_count = attempt_no
+            task.result_json = json.dumps(result_obj, ensure_ascii=False)
+            task.last_error = None
+            task.next_run_at = None
+            task.updated_at = now
+            self._append_log(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                level="INFO",
+                message=f"scheduled radar pipeline succeeded on attempt {attempt_no}",
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="ATTEMPT_FINISHED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="STATUS_CHANGED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            db.commit()
+        except Exception as exc:
+            attempt.retryable = 0
+            self._mark_retry_or_fail(db, task, attempt, attempt_no, str(exc), retryable=False)
+
+    def _execute_scheduled_daily_digest(
+        self,
+        *,
+        db: Session,
+        task: SchedulerTask,
+        attempt_no: int,
+        payload: dict[str, Any],
+    ) -> None:
+        trace_id = task.trace_id or str(uuid.uuid4())
+        attempt = SchedulerTaskAttempt(
+            task_id=task.id,
+            attempt_no=attempt_no,
+            agent="scheduler-daily-digest",
+            trace_id=trace_id,
+            status=TaskStatus.RUNNING,
+            started_at=_utcnow(),
+            request_url="local://platform/digest_service",
+            request_json=json.dumps(payload, ensure_ascii=False)[:20000],
+        )
+        db.add(attempt)
+        task.last_agent = "scheduler-daily-digest"
+        task.updated_at = _utcnow()
+        self._append_event(
+            db,
+            task_id=task.id,
+            trace_id=trace_id,
+            event_type="ATTEMPT_STARTED",
+            from_status=TaskStatus.RUNNING,
+            to_status=TaskStatus.RUNNING,
+            attempt_no=attempt_no,
+            message="executing scheduled daily digest",
+        )
+        db.commit()
+        db.refresh(attempt)
+
+        from apps.platform.database import SessionLocal as PlatformSessionLocal
+        from apps.platform.services.digest_service import DigestService
+
+        platform_db = PlatformSessionLocal()
+        try:
+            result = DigestService(platform_db).generate_digest(
+                run_id=trace_id,
+                lookback_hours=int(payload.get("lookback_hours") or 24),
+            )
+            result_obj = {
+                "id": int(result.id),
+                "title": result.title,
+                "included_count": int(result.included_count),
+                "run_id": result.run_id,
+            }
+            now = _utcnow()
+            attempt.status = TaskStatus.SUCCEEDED
+            attempt.finished_at = now
+            attempt.response_text = json.dumps(result_obj, ensure_ascii=False)[:20000]
+            task.status = TaskStatus.SUCCEEDED
+            task.attempt_count = attempt_no
+            task.result_json = json.dumps(result_obj, ensure_ascii=False)
+            task.last_error = None
+            task.next_run_at = None
+            task.updated_at = now
+            self._append_log(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                level="INFO",
+                message=f"scheduled daily digest succeeded on attempt {attempt_no}",
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="ATTEMPT_FINISHED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="STATUS_CHANGED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            db.commit()
+        except Exception as exc:
+            attempt.retryable = 0
+            self._mark_retry_or_fail(db, task, attempt, attempt_no, str(exc), retryable=False)
+        finally:
+            platform_db.close()
 
     def _mark_failed(
         self,

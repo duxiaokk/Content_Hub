@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from models import ContentItem, Post, PublishRecord
+from apps.platform.models import ContentItem, Post, PublishRecord
 
 
 def _utcnow() -> datetime:

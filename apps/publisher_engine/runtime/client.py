@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from urllib import error, request
 
-from publisher_engine.runtime.settings import PublisherSettings
+from apps.publisher_engine.runtime.settings import PublisherSettings
 
 
 @dataclass(slots=True)

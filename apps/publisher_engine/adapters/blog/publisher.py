@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from publisher_engine.runtime.base import BasePublisher
-from publisher_engine.runtime.client import BlogPublishingClient
-from publisher_engine.runtime.models import DraftPayload, PublishRequest, PublishResponse
-from publisher_engine.runtime.settings import PublisherSettings
-from workflow_engine.registry.contracts import ContentAsset, PublishResult, PublishTarget
+from apps.publisher_engine.runtime.base import BasePublisher
+from apps.publisher_engine.runtime.client import BlogPublishingClient
+from apps.publisher_engine.runtime.models import DraftPayload, PublishRequest, PublishResponse
+from apps.publisher_engine.runtime.settings import PublisherSettings
+from apps.workflow_engine.registry.contracts import ContentAsset, PublishResult, PublishTarget
 
 
 class BlogPublisher(BasePublisher):

@@ -7,7 +7,7 @@
 
 | 瀹屾垚 | 鎬昏 | 杩涘害 |
 |------|------|------|
-| 16 | 19 | 84% |
+| 17 | 19 | 89% |
 
 ---
 
@@ -73,8 +73,8 @@
 
 | 缂栧彿 | 浠诲姟 | 鐘舵€?| 妯″潡 |
 |------|------|------|------|
-| [T017](tasks/T017_scheduler_cron.md) | scheduler_cron - 瀹氭椂浠诲姟閰嶇疆 | IN PROGRESS | scheduler_center |
-| [T018](tasks/T018_frontend_minimal_pages.md) | frontend_minimal_pages - 鍓嶇鏈€灏忛〉闈?| TODO | frontend |
+| [T017](tasks/T017_scheduler_cron.md) | scheduler_cron - 瀹氭椂浠诲姟閰嶇疆 | DONE | scheduler_center |
+| [T018](tasks/T018_frontend_minimal_pages.md) | frontend_minimal_pages - 鍓嶇鏈€灏忛〉闈?| IN PROGRESS | frontend |
 | [T019](tasks/T019_tests_and_config.md) | tests_and_config - 娴嬭瘯 + 閰嶇疆鏁寸悊 | TODO | tests |
 
 ---
@@ -140,6 +140,7 @@ graph TD
 - 2026-06-12: T014 completed. Digest list/detail/generate/download APIs are now available, and approved content can be assembled into persisted markdown digests. Acceptance tests pass.
 - 2026-06-13: T015 completed. Markdown digest publisher now writes dated files under `CONTENT_HUB_DIGEST_OUTPUT_DIR`, digest generation routes through `publisher_engine`, and success/failed publish records are persisted with platform API coverage. Acceptance tests pass.
 - 2026-06-13: T016 completed. Blog draft publishing now writes unpublished posts, persists success/failed publish records, marks content items as published, and skips duplicate blog publishes. Acceptance tests pass.
+- 2026-06-14: T017 completed. Scheduler cron jobs now enqueue daily radar and daily digest tasks, scheduler startup respects `CONTENT_HUB_SCHEDULER_ENABLED`, and internal trigger endpoints for radar/daily-digest are available. Acceptance tests pass.
 - 2026-06-11: T001 revalidated. Alembic `upgrade` / `downgrade` passes on a clean temp SQLite database.
 - 2026-06-11: Default workspace SQLite files under `apps/platform/*.db` still raise `disk I/O error`; keep T001 as `DONE`, but this local database file issue still needs environment cleanup or file replacement.
 - 2026-06-12: T011 Alembic path import issue is fixed in `migrations/env.py`, but SQLite migration commands still hit environment-level `disk I/O error` on local file databases during `alembic upgrade/current/downgrade`.

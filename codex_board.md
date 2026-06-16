@@ -7,7 +7,7 @@
 
 | 瀹屾垚 | 鎬昏 | 杩涘害 |
 |------|------|------|
-| 17 | 19 | 89% |
+| 19 | 19 | 100% |
 
 ---
 
@@ -74,8 +74,8 @@
 | 缂栧彿 | 浠诲姟 | 鐘舵€?| 妯″潡 |
 |------|------|------|------|
 | [T017](tasks/T017_scheduler_cron.md) | scheduler_cron - 瀹氭椂浠诲姟閰嶇疆 | DONE | scheduler_center |
-| [T018](tasks/T018_frontend_minimal_pages.md) | frontend_minimal_pages - 鍓嶇鏈€灏忛〉闈?| IN PROGRESS | frontend |
-| [T019](tasks/T019_tests_and_config.md) | tests_and_config - 娴嬭瘯 + 閰嶇疆鏁寸悊 | TODO | tests |
+| [T018](tasks/T018_frontend_minimal_pages.md) | frontend_minimal_pages - 鍓嶇鏈€灏忛〉闈?| DONE | frontend |
+| [T019](tasks/T019_tests_and_config.md) | tests_and_config - 娴嬭瘯 + 閰嶇疆鏁寸悊 | DONE | tests |
 
 ---
 
@@ -141,9 +141,13 @@ graph TD
 - 2026-06-13: T015 completed. Markdown digest publisher now writes dated files under `CONTENT_HUB_DIGEST_OUTPUT_DIR`, digest generation routes through `publisher_engine`, and success/failed publish records are persisted with platform API coverage. Acceptance tests pass.
 - 2026-06-13: T016 completed. Blog draft publishing now writes unpublished posts, persists success/failed publish records, marks content items as published, and skips duplicate blog publishes. Acceptance tests pass.
 - 2026-06-14: T017 completed. Scheduler cron jobs now enqueue daily radar and daily digest tasks, scheduler startup respects `CONTENT_HUB_SCHEDULER_ENABLED`, and internal trigger endpoints for radar/daily-digest are available. Acceptance tests pass.
+- 2026-06-14: T018 completed. Frontend source management, content list, review queue, and digest pages are wired to the current content APIs and routes. `npx tsc -b` passes; `vite build` still fails in this environment with `spawn EPERM` when `esbuild` starts.
+- 2026-06-14: T019 completed. Added focused fetcher/AI/workflow/publisher tests, refreshed platform API/integration coverage, appended Content Hub env examples, and added root pytest discovery config. `pytest apps/fetcher_engine/tests apps/ai_processor/tests apps/publisher_engine/tests apps/workflow_engine/tests -v` and targeted platform API/integration pytest groups pass.
+- 2026-06-14: Pytest cache permission warnings (`pytest-cache-files-*`) still appear in this workspace, and `apps/platform/pyproject.toml` now declares `asyncio_mode`, but the current environment lacks `pytest-asyncio`, so that config still emits an unknown-option warning.
 - 2026-06-11: T001 revalidated. Alembic `upgrade` / `downgrade` passes on a clean temp SQLite database.
 - 2026-06-11: Default workspace SQLite files under `apps/platform/*.db` still raise `disk I/O error`; keep T001 as `DONE`, but this local database file issue still needs environment cleanup or file replacement.
 - 2026-06-12: T011 Alembic path import issue is fixed in `migrations/env.py`, but SQLite migration commands still hit environment-level `disk I/O error` on local file databases during `alembic upgrade/current/downgrade`.
 - 2026-06-12: Pytest cache now targets `.tmp/.pytest_cache`, but this workspace still denies creation of pytest atomic temp directories (`pytest-cache-files-*`), so cache warnings may persist until filesystem permissions are fixed.
+- 2026-06-16: Agent control plane migration M01-M05 completed. B-side entrypoints are unified, `ContentDomainClient` now mediates B -> A calls for radar/digest/publish capabilities, scheduler dispatch no longer expands direct A-side execution paths, and legacy orchestration/planner/aggregator layers are marked as frozen compatibility only. Targeted platform migration tests and orchestration compatibility tests pass.
 
 *?????2026-06-12*

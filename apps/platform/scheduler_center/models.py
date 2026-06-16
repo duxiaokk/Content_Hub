@@ -5,7 +5,10 @@ from datetime import UTC, datetime
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from apps.platform.scheduler_center.database import Base
+try:
+    from scheduler_center.database import Base
+except ImportError:  # pragma: no cover - package import fallback
+    from apps.platform.scheduler_center.database import Base
 
 
 def _utcnow() -> datetime:

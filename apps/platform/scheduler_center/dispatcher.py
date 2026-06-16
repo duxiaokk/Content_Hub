@@ -13,22 +13,46 @@ import httpx
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from apps.platform.scheduler_center import _ensure_stdlib_platform
-from apps.platform.scheduler_center.config import (
-    CONTENT_PIPELINE_DAILY_DIGEST,
-    CONTENT_PIPELINE_RADAR,
-    scheduler_settings,
-)
-from apps.platform.scheduler_center.database import SessionLocal
-from apps.platform.scheduler_center.models import (
-    SchedulerAgent,
-    SchedulerTask,
-    SchedulerTaskAttempt,
-    SchedulerTaskEvent,
-    SchedulerTaskLog,
-)
+try:
+    from scheduler_center import _ensure_stdlib_platform
+    from scheduler_center.config import (
+        CONTENT_PIPELINE_DAILY_DIGEST,
+        CONTENT_PIPELINE_RADAR,
+        scheduler_settings,
+    )
+    from scheduler_center.database import SessionLocal
+    from scheduler_center.models import (
+        SchedulerAgent,
+        SchedulerTask,
+        SchedulerTaskAttempt,
+        SchedulerTaskEvent,
+        SchedulerTaskLog,
+    )
+except ImportError:  # pragma: no cover - package import fallback
+    from apps.platform.scheduler_center import _ensure_stdlib_platform
+    from apps.platform.scheduler_center.config import (
+        CONTENT_PIPELINE_DAILY_DIGEST,
+        CONTENT_PIPELINE_RADAR,
+        scheduler_settings,
+    )
+    from apps.platform.scheduler_center.database import SessionLocal
+    from apps.platform.scheduler_center.models import (
+        SchedulerAgent,
+        SchedulerTask,
+        SchedulerTaskAttempt,
+        SchedulerTaskEvent,
+        SchedulerTaskLog,
+    )
 
 _ensure_stdlib_platform()
+
+
+def _load_content_domain_client():
+    try:
+        from services.content_domain_client import ContentDomainClient
+    except ImportError:  # pragma: no cover - package import fallback
+        from apps.platform.services.content_domain_client import ContentDomainClient
+    return ContentDomainClient
 
 
 class TaskStatus:
@@ -201,6 +225,8 @@ class SchedulerDispatcher:
                 self._running.pop(task_id, None)
 
     def _run_scheduled_jobs_once(self, now: datetime | None = None) -> list[str]:
+        if not scheduler_settings.scheduler_cron_enabled:
+            return []
         current = now or _utcnow()
         minute_key = current.strftime("%Y-%m-%d %H:%M")
         if self._last_scheduled_minute == minute_key:
@@ -432,6 +458,15 @@ class SchedulerDispatcher:
 
             if task.task_type == CONTENT_PIPELINE_DAILY_DIGEST:
                 self._execute_scheduled_daily_digest(
+                    db=db,
+                    task=task,
+                    attempt_no=attempt_no,
+                    payload=payload,
+                )
+                return
+
+            if task.task_type == "content.publish.approved":
+                self._execute_publish_approved_content(
                     db=db,
                     task=task,
                     attempt_no=attempt_no,
@@ -858,11 +893,10 @@ class SchedulerDispatcher:
         db.refresh(attempt)
 
         try:
-            from apps.workflow_engine.api.service import WorkflowEngineService
-
-            service = WorkflowEngineService()
-            result_obj = asyncio.run(
-                service.run_radar_pipeline(
+            client_cls = _load_content_domain_client()
+            client = client_cls()
+            result = asyncio.run(
+                client.run_content_radar(
                     {
                         **payload,
                         "run_id": trace_id,
@@ -870,6 +904,7 @@ class SchedulerDispatcher:
                     }
                 )
             )
+            result_obj = result.to_dict()
             now = _utcnow()
             attempt.status = TaskStatus.SUCCEEDED
             attempt.finished_at = now
@@ -947,21 +982,18 @@ class SchedulerDispatcher:
         db.commit()
         db.refresh(attempt)
 
-        from apps.platform.database import SessionLocal as PlatformSessionLocal
-        from apps.platform.services.digest_service import DigestService
-
-        platform_db = PlatformSessionLocal()
         try:
-            result = DigestService(platform_db).generate_digest(
-                run_id=trace_id,
-                lookback_hours=int(payload.get("lookback_hours") or 24),
+            client_cls = _load_content_domain_client()
+            client = client_cls()
+            result = asyncio.run(
+                client.run_daily_digest(
+                    {
+                        **payload,
+                        "run_id": trace_id,
+                    }
+                )
             )
-            result_obj = {
-                "id": int(result.id),
-                "title": result.title,
-                "included_count": int(result.included_count),
-                "run_id": result.run_id,
-            }
+            result_obj = result.to_dict()
             now = _utcnow()
             attempt.status = TaskStatus.SUCCEEDED
             attempt.finished_at = now
@@ -1003,8 +1035,95 @@ class SchedulerDispatcher:
         except Exception as exc:
             attempt.retryable = 0
             self._mark_retry_or_fail(db, task, attempt, attempt_no, str(exc), retryable=False)
-        finally:
-            platform_db.close()
+
+    def _execute_publish_approved_content(
+        self,
+        *,
+        db: Session,
+        task: SchedulerTask,
+        attempt_no: int,
+        payload: dict[str, Any],
+    ) -> None:
+        trace_id = task.trace_id or str(uuid.uuid4())
+        attempt = SchedulerTaskAttempt(
+            task_id=task.id,
+            attempt_no=attempt_no,
+            agent="content-domain-publish",
+            trace_id=trace_id,
+            status=TaskStatus.RUNNING,
+            started_at=_utcnow(),
+            request_url="local://content_domain/publish_approved_content",
+            request_json=json.dumps(payload, ensure_ascii=False)[:20000],
+        )
+        db.add(attempt)
+        task.last_agent = "content-domain-publish"
+        task.updated_at = _utcnow()
+        self._append_event(
+            db,
+            task_id=task.id,
+            trace_id=trace_id,
+            event_type="ATTEMPT_STARTED",
+            from_status=TaskStatus.RUNNING,
+            to_status=TaskStatus.RUNNING,
+            attempt_no=attempt_no,
+            message="executing approved content publish",
+        )
+        db.commit()
+        db.refresh(attempt)
+
+        try:
+            client_cls = _load_content_domain_client()
+            client = client_cls()
+            result = asyncio.run(
+                client.publish_approved_content(
+                    {
+                        **payload,
+                        "run_id": trace_id,
+                    }
+                )
+            )
+            result_obj = result.to_dict()
+            now = _utcnow()
+            attempt.status = TaskStatus.SUCCEEDED
+            attempt.finished_at = now
+            attempt.response_text = json.dumps(result_obj, ensure_ascii=False)[:20000]
+            task.status = TaskStatus.SUCCEEDED
+            task.attempt_count = attempt_no
+            task.result_json = json.dumps(result_obj, ensure_ascii=False)
+            task.last_error = None
+            task.next_run_at = None
+            task.updated_at = now
+            self._append_log(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                level="INFO",
+                message=f"approved content publish succeeded on attempt {attempt_no}",
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="ATTEMPT_FINISHED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="STATUS_CHANGED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            db.commit()
+        except Exception as exc:
+            attempt.retryable = 0
+            self._mark_retry_or_fail(db, task, attempt, attempt_no, str(exc), retryable=False)
 
     def _mark_failed(
         self,

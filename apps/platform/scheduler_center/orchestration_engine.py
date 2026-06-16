@@ -5,6 +5,9 @@
 """
 from __future__ import annotations
 
+# Compatibility layer only.
+# Frozen during Agent control plane migration.
+
 import json
 import logging
 import threading

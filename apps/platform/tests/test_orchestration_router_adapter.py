@@ -49,6 +49,45 @@ def test_orchestration_adapter_submits_scheduler_workflow_task() -> None:
         db.close()
 
 
+def test_orchestration_adapter_uses_standard_workflow_payload() -> None:
+    Base.metadata.create_all(bind=engine)
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/internal/orchestration/runs",
+        headers={"x-internal-token": "local-dev-scheduler-token"},
+        json={
+            "intent": "run content workflow",
+            "name": "workflow-b",
+            "context": {
+                "source_name": "reddit_ai",
+                "fetcher_name": "reddit_ai",
+                "processor_name": "rewrite",
+                "publisher_name": "digest_markdown",
+                "lookback_hours": 6,
+                "limit": 8,
+                "process_options": {"rewrite_profile": "zh_tech_blog"},
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    run_id = payload["run_id"]
+
+    db = SessionLocal()
+    try:
+        task = db.query(SchedulerTask).filter_by(id=run_id).first()
+        assert task is not None
+        assert '"source_name": "reddit_ai"' in task.payload_json
+        assert '"publisher_name": "digest_markdown"' in task.payload_json
+        assert '"lookback_hours": 6' in task.payload_json
+    finally:
+        db.close()
+
+
 def test_orchestration_adapter_lists_scheduler_runs() -> None:
     app = FastAPI()
     app.include_router(router)

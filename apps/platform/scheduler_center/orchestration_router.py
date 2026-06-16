@@ -7,6 +7,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+try:
+    from routers.internal_tasks import ContentWorkflowRunRequest, build_content_workflow_payload
+except ImportError:  # pragma: no cover - package import fallback
+    from apps.platform.routers.internal_tasks import ContentWorkflowRunRequest, build_content_workflow_payload
 from scheduler_center.auth import verify_internal_token
 from scheduler_center.database import get_db
 from scheduler_center.dispatcher import TaskStatus
@@ -49,24 +53,22 @@ def _to_run_status(task_status: str) -> str:
 def _build_workflow_payload(body: RunSubmitRequest) -> dict[str, Any]:
     context = dict(body.context or {})
     fetcher_name = str(context.get("fetcher_name") or "cnblogs")
-    processor_name = str(context.get("processor_name") or "rewrite")
-    publisher_name = str(context.get("publisher_name") or "blog")
-    workflow_name = str(context.get("workflow_name") or body.name or "content.workflow.run")
-    source_name = str(context.get("source_name") or fetcher_name)
-    return {
-        "workflow_name": workflow_name,
-        "source_name": source_name,
-        "fetcher_name": fetcher_name,
-        "processor_name": processor_name,
-        "publisher_name": publisher_name,
-        "lookback_hours": int(context.get("lookback_hours") or 24),
-        "limit": int(context.get("limit") or 20),
-        "fetch_options": dict(context.get("fetch_options") or {}),
-        "process_options": dict(context.get("process_options") or {}),
-        "publish_options": dict(context.get("publish_options") or {}),
-        "intent": body.intent,
-        "constraints": dict(body.constraints or {}),
-    }
+    workflow_body = ContentWorkflowRunRequest(
+        workflow_name=str(context.get("workflow_name") or body.name or "content.workflow.run"),
+        source_name=str(context.get("source_name") or fetcher_name),
+        fetcher_name=fetcher_name,
+        processor_name=str(context.get("processor_name") or "rewrite"),
+        publisher_name=str(context.get("publisher_name") or "blog"),
+        lookback_hours=int(context.get("lookback_hours") or 24),
+        limit=int(context.get("limit") or 20),
+        fetch_options=dict(context.get("fetch_options") or {}),
+        process_options=dict(context.get("process_options") or {}),
+        publish_options=dict(context.get("publish_options") or {}),
+    )
+    payload = build_content_workflow_payload(workflow_body)
+    payload["intent"] = body.intent
+    payload["constraints"] = dict(body.constraints or {})
+    return payload
 
 
 @router.post("/runs", response_model=RunSubmitResponse)

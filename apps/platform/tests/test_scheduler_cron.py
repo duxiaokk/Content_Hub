@@ -15,14 +15,15 @@ from sqlalchemy.pool import StaticPool
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from apps.platform.routers.internal_tasks import router
-from apps.platform.scheduler_center.config import CONTENT_PIPELINE_DAILY_DIGEST, CONTENT_PIPELINE_RADAR
-from apps.platform.scheduler_center.database import Base
-from apps.platform.scheduler_center.models import SchedulerTask
+from routers.internal_tasks import router
+from scheduler_center.config import CONTENT_PIPELINE_DAILY_DIGEST, CONTENT_PIPELINE_RADAR
+from scheduler_center.database import Base
+from scheduler_center.models import SchedulerTask
 
 
 def _make_session_local():
-    __import__("apps.platform.scheduler_center.models")
+    import scheduler_center.models  # noqa: F401
+
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -35,6 +36,7 @@ def _make_session_local():
         bind=engine,
         expire_on_commit=False,
     )
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     return session_local
 
@@ -49,8 +51,8 @@ def test_trigger_radar_pipeline_submits_scheduler_task(monkeypatch) -> None:
             calls.append(kwargs)
             return {"id": "task-radar-1", "trace_id": kwargs.get("trace_id")}
 
-    monkeypatch.setattr("apps.platform.routers.internal_tasks.get_scheduler_client", lambda: StubClient())
-    monkeypatch.setattr("apps.platform.routers.internal_tasks.settings.internal_agent_token", "token")
+    monkeypatch.setattr("routers.internal_tasks.get_scheduler_client", lambda: StubClient())
+    monkeypatch.setattr("routers.internal_tasks.settings.internal_agent_token", "token")
 
     client = TestClient(app)
     response = client.post(
@@ -75,8 +77,8 @@ def test_trigger_daily_digest_pipeline_submits_scheduler_task(monkeypatch) -> No
             calls.append(kwargs)
             return {"id": "task-digest-1", "trace_id": kwargs.get("trace_id")}
 
-    monkeypatch.setattr("apps.platform.routers.internal_tasks.get_scheduler_client", lambda: StubClient())
-    monkeypatch.setattr("apps.platform.routers.internal_tasks.settings.internal_agent_token", "token")
+    monkeypatch.setattr("routers.internal_tasks.get_scheduler_client", lambda: StubClient())
+    monkeypatch.setattr("routers.internal_tasks.settings.internal_agent_token", "token")
 
     client = TestClient(app)
     response = client.post(
@@ -91,7 +93,7 @@ def test_trigger_daily_digest_pipeline_submits_scheduler_task(monkeypatch) -> No
 
 
 def test_dispatcher_cron_submits_scheduled_jobs(monkeypatch) -> None:
-    import apps.platform.scheduler_center.dispatcher as dispatcher_module
+    import scheduler_center.dispatcher as dispatcher_module
 
     session_local = _make_session_local()
     monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
@@ -108,7 +110,7 @@ def test_dispatcher_cron_submits_scheduled_jobs(monkeypatch) -> None:
 
 
 def test_dispatcher_cron_respects_enable_flag(monkeypatch) -> None:
-    import apps.platform.scheduler_center.dispatcher as dispatcher_module
+    import scheduler_center.dispatcher as dispatcher_module
 
     session_local = _make_session_local()
     monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)

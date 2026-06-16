@@ -12,6 +12,9 @@
 """
 from __future__ import annotations
 
+# Compatibility layer only.
+# New planning capabilities should move to apps/platform/agents/planner_agent.py.
+
 import json
 import uuid
 from dataclasses import dataclass

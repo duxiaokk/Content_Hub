@@ -12,6 +12,9 @@
 """
 from __future__ import annotations
 
+# Compatibility layer only.
+# New aggregation capabilities should move to apps/platform/agents/aggregator_agent.py.
+
 import json
 from dataclasses import dataclass
 from typing import Any

@@ -149,5 +149,7 @@ graph TD
 - 2026-06-12: T011 Alembic path import issue is fixed in `migrations/env.py`, but SQLite migration commands still hit environment-level `disk I/O error` on local file databases during `alembic upgrade/current/downgrade`.
 - 2026-06-12: Pytest cache now targets `.tmp/.pytest_cache`, but this workspace still denies creation of pytest atomic temp directories (`pytest-cache-files-*`), so cache warnings may persist until filesystem permissions are fixed.
 - 2026-06-16: Agent control plane migration M01-M05 completed. B-side entrypoints are unified, `ContentDomainClient` now mediates B -> A calls for radar/digest/publish capabilities, scheduler dispatch no longer expands direct A-side execution paths, and legacy orchestration/planner/aggregator layers are marked as frozen compatibility only. Targeted platform migration tests and orchestration compatibility tests pass.
+- 2026-06-16: Migration P0 fix batch completed. `content.workflow.run` now executes through `ContentDomainClient` and reaches `SUCCEEDED`/`FAILED` correctly in scheduler worker execution, `content.publish.approved` is contract-limited to `target_type="blog"`, and real dispatcher execution tests now cover workflow success/failure plus publish success/invalid-target cases.
+- 2026-06-16: `pytest` targeted migration validation still emits `PytestConfigWarning: Unknown config option: asyncio_mode` because `apps/platform/pyproject.toml` declares `asyncio_mode`, but the current environment still lacks `pytest-asyncio`.
 
 *?????2026-06-12*

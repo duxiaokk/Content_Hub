@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -111,7 +111,7 @@ class DailyDigestRunRequest(BaseModel):
 
 class PublishApprovedContentRequest(BaseModel):
     content_item_id: int = Field(ge=1)
-    target_type: str = Field(default="blog", min_length=1, max_length=64)
+    target_type: Literal["blog"] = "blog"
     trace_id: str | None = None
     idempotency_key: str | None = Field(default=None, max_length=128)
 

@@ -28,6 +28,7 @@ def test_platform_runtime_sources_use_workflow_engine_entrypoints() -> None:
     dispatcher = (ROOT / "platform" / "scheduler_center" / "dispatcher.py").read_text(encoding="utf-8")
     orchestration_router = (ROOT / "platform" / "scheduler_center" / "orchestration_router.py").read_text(encoding="utf-8")
     assert "ContentDomainClient" in dispatcher or "content_domain_client" in dispatcher
+    assert "WorkflowEngineService" not in dispatcher
     assert 'WORKFLOW_TASK_TYPE = "content.workflow.run"' in orchestration_router
 
 

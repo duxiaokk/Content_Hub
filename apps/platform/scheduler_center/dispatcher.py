@@ -787,26 +787,17 @@ class SchedulerDispatcher:
         db.refresh(attempt)
 
         try:
-            from apps.workflow_engine.api.service import WorkflowEngineService
-
-            service = WorkflowEngineService()
-            result_obj = asyncio.run(
-                service.run_content_workflow(
-                    workflow_name=str(payload.get("workflow_name") or "content.workflow.run"),
-                    source_name=str(payload.get("source_name") or payload.get("fetcher_name") or "cnblogs"),
-                    fetcher_name=str(payload.get("fetcher_name") or "cnblogs"),
-                    processor_name=str(payload.get("processor_name") or "rewrite"),
-                    publisher_name=str(payload.get("publisher_name") or "blog"),
-                    lookback_hours=int(payload.get("lookback_hours") or 24),
-                    limit=int(payload.get("limit") or 20),
-                    options={
-                        "fetch": dict(payload.get("fetch_options") or {}),
-                        "process": dict(payload.get("process_options") or {}),
-                        "publish": dict(payload.get("publish_options") or {}),
-                    },
-                    run_id=trace_id,
+            client_cls = _load_content_domain_client()
+            client = client_cls()
+            result = asyncio.run(
+                client.run_content_workflow(
+                    {
+                        **payload,
+                        "run_id": trace_id,
+                    }
                 )
             )
+            result_obj = result.to_dict()
 
             now = _utcnow()
             attempt.status = TaskStatus.SUCCEEDED

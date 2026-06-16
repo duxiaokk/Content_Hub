@@ -19,6 +19,7 @@ from routers.internal_tasks import router
 from scheduler_center.config import CONTENT_PIPELINE_DAILY_DIGEST, CONTENT_PIPELINE_RADAR
 from scheduler_center.database import Base
 from scheduler_center.models import SchedulerTask
+from services.content_domain_contracts import ContentDomainResult
 
 
 def _make_session_local():
@@ -125,4 +126,204 @@ def test_dispatcher_cron_respects_enable_flag(monkeypatch) -> None:
     db = session_local()
     assert dispatched == []
     assert db.query(SchedulerTask).count() == 0
+    db.close()
+
+
+def test_dispatcher_executes_content_workflow_via_content_domain_client(monkeypatch) -> None:
+    import scheduler_center.dispatcher as dispatcher_module
+
+    session_local = _make_session_local()
+    monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
+
+    calls: list[dict] = []
+
+    class StubContentDomainClient:
+        async def run_content_workflow(self, payload):
+            calls.append(payload)
+            return ContentDomainResult(
+                run_id=str(payload["run_id"]),
+                status="success",
+                summary="workflow content.workflow.run completed",
+                trace_ref=str(payload["run_id"]),
+                data={"workflow_name": payload["workflow_name"], "status": "succeeded"},
+            )
+
+    monkeypatch.setattr(dispatcher_module, "_load_content_domain_client", lambda: StubContentDomainClient)
+
+    db = session_local()
+    task = SchedulerTask(
+        id=str(uuid.uuid4()),
+        idempotency_key=None,
+        trace_id="trace-workflow-1",
+        task_type="content.workflow.run",
+        payload_json='{"workflow_name":"content.workflow.run","source_name":"cnblogs"}',
+        status=dispatcher_module.TaskStatus.RUNNING,
+        cancel_requested=0,
+        max_retries=0,
+        retry_delay_seconds=0.0,
+        attempt_count=0,
+        next_run_at=None,
+        last_agent=None,
+        result_json=None,
+        last_error=None,
+    )
+    db.add(task)
+    db.commit()
+    db.close()
+
+    dispatcher = dispatcher_module.SchedulerDispatcher()
+    dispatcher._execute_task(task.id)
+
+    db = session_local()
+    refreshed = db.query(SchedulerTask).filter(SchedulerTask.id == task.id).first()
+    assert refreshed is not None
+    assert refreshed.status == dispatcher_module.TaskStatus.SUCCEEDED
+    assert refreshed.last_error is None
+    assert refreshed.result_json is not None
+    assert calls[0]["run_id"] == "trace-workflow-1"
+    db.close()
+
+
+def test_dispatcher_marks_content_workflow_failed_when_domain_client_errors(monkeypatch) -> None:
+    import scheduler_center.dispatcher as dispatcher_module
+
+    session_local = _make_session_local()
+    monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
+
+    class StubContentDomainClient:
+        async def run_content_workflow(self, payload):
+            raise RuntimeError(f"workflow failed for {payload['workflow_name']}")
+
+    monkeypatch.setattr(dispatcher_module, "_load_content_domain_client", lambda: StubContentDomainClient)
+
+    db = session_local()
+    task = SchedulerTask(
+        id=str(uuid.uuid4()),
+        idempotency_key=None,
+        trace_id="trace-workflow-2",
+        task_type="content.workflow.run",
+        payload_json='{"workflow_name":"content.workflow.run"}',
+        status=dispatcher_module.TaskStatus.RUNNING,
+        cancel_requested=0,
+        max_retries=0,
+        retry_delay_seconds=0.0,
+        attempt_count=0,
+        next_run_at=None,
+        last_agent=None,
+        result_json=None,
+        last_error=None,
+    )
+    db.add(task)
+    db.commit()
+    db.close()
+
+    dispatcher = dispatcher_module.SchedulerDispatcher()
+    dispatcher._execute_task(task.id)
+
+    db = session_local()
+    refreshed = db.query(SchedulerTask).filter(SchedulerTask.id == task.id).first()
+    assert refreshed is not None
+    assert refreshed.status == dispatcher_module.TaskStatus.FAILED
+    assert "workflow failed for content.workflow.run" in str(refreshed.last_error)
+    db.close()
+
+
+def test_dispatcher_executes_publish_approved_content_success(monkeypatch) -> None:
+    import scheduler_center.dispatcher as dispatcher_module
+
+    session_local = _make_session_local()
+    monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
+
+    calls: list[dict] = []
+
+    class StubContentDomainClient:
+        async def publish_approved_content(self, payload):
+            calls.append(payload)
+            return ContentDomainResult(
+                run_id=str(payload["run_id"]),
+                status="success",
+                summary="draft published",
+                trace_ref=str(payload["run_id"]),
+                data={"content_item_id": payload["content_item_id"], "status": "success", "target_type": "blog"},
+            )
+
+    monkeypatch.setattr(dispatcher_module, "_load_content_domain_client", lambda: StubContentDomainClient)
+
+    db = session_local()
+    task = SchedulerTask(
+        id=str(uuid.uuid4()),
+        idempotency_key=None,
+        trace_id="trace-publish-1",
+        task_type="content.publish.approved",
+        payload_json='{"content_item_id":12,"target_type":"blog"}',
+        status=dispatcher_module.TaskStatus.RUNNING,
+        cancel_requested=0,
+        max_retries=0,
+        retry_delay_seconds=0.0,
+        attempt_count=0,
+        next_run_at=None,
+        last_agent=None,
+        result_json=None,
+        last_error=None,
+    )
+    db.add(task)
+    db.commit()
+    db.close()
+
+    dispatcher = dispatcher_module.SchedulerDispatcher()
+    dispatcher._execute_task(task.id)
+
+    db = session_local()
+    refreshed = db.query(SchedulerTask).filter(SchedulerTask.id == task.id).first()
+    assert refreshed is not None
+    assert refreshed.status == dispatcher_module.TaskStatus.SUCCEEDED
+    assert refreshed.last_error is None
+    assert calls[0]["target_type"] == "blog"
+    db.close()
+
+
+def test_dispatcher_marks_publish_approved_content_failed_for_invalid_target(monkeypatch) -> None:
+    import scheduler_center.dispatcher as dispatcher_module
+    from services.content_domain_client import UnsupportedPublishTargetError
+
+    session_local = _make_session_local()
+    monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
+
+    class StubContentDomainClient:
+        async def publish_approved_content(self, payload):
+            raise UnsupportedPublishTargetError(
+                f"unsupported publish target_type: {payload['target_type']}"
+            )
+
+    monkeypatch.setattr(dispatcher_module, "_load_content_domain_client", lambda: StubContentDomainClient)
+
+    db = session_local()
+    task = SchedulerTask(
+        id=str(uuid.uuid4()),
+        idempotency_key=None,
+        trace_id="trace-publish-2",
+        task_type="content.publish.approved",
+        payload_json='{"content_item_id":12,"target_type":"digest"}',
+        status=dispatcher_module.TaskStatus.RUNNING,
+        cancel_requested=0,
+        max_retries=0,
+        retry_delay_seconds=0.0,
+        attempt_count=0,
+        next_run_at=None,
+        last_agent=None,
+        result_json=None,
+        last_error=None,
+    )
+    db.add(task)
+    db.commit()
+    db.close()
+
+    dispatcher = dispatcher_module.SchedulerDispatcher()
+    dispatcher._execute_task(task.id)
+
+    db = session_local()
+    refreshed = db.query(SchedulerTask).filter(SchedulerTask.id == task.id).first()
+    assert refreshed is not None
+    assert refreshed.status == dispatcher_module.TaskStatus.FAILED
+    assert "unsupported publish target_type: digest" in str(refreshed.last_error)
     db.close()

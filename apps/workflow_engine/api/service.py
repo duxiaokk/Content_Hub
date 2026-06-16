@@ -12,9 +12,12 @@ from apps.ai_processor.api.service import AIProcessingService
 from apps.ai_processor.runtime.config import load_ai_processor_config
 from apps.platform.database import SessionLocal
 from apps.platform.models import ContentItem, PublishRecord, WorkflowRun
+from apps.workflow_engine.pipeline import DagWorkflowRunner, WorkflowGraphSpec, WorkflowNodeSpec
 from apps.workflow_engine.pipeline.filter_node import FilterNode
+from apps.workflow_engine.registry.bootstrap import build_default_registry
 from apps.workflow_engine.registry.contracts import ContentAsset, ProcessContext, ReviewItem
 from apps.workflow_engine.registry.static_registry import RADAR_PIPELINE_STEPS
+from apps.workflow_engine.registry.static_registry import registry as workflow_registry
 from apps.workflow_engine.runtime.content_repository import ContentQuery, ContentRepository
 from apps.workflow_engine.runtime.observability import WorkflowRunTrace
 
@@ -27,6 +30,12 @@ class WorkflowEngineService:
     def __init__(self) -> None:
         self._repository = ContentRepository()
         self._filter_node = FilterNode()
+        self._ensure_registry_ready()
+
+    @staticmethod
+    def _ensure_registry_ready() -> None:
+        if not workflow_registry.fetchers:
+            build_default_registry()
 
     async def run_radar_pipeline(self, request: dict[str, Any]) -> dict[str, Any]:
         db: Session = SessionLocal()
@@ -166,6 +175,66 @@ class WorkflowEngineService:
     async def run_content_radar(self, request: dict[str, Any]) -> dict[str, Any]:
         """稳定领域能力入口，供 B 侧适配层调用。"""
         return await self.run_radar_pipeline(request)
+
+    async def run_content_workflow(
+        self,
+        *,
+        workflow_name: str,
+        source_name: str,
+        fetcher_name: str,
+        processor_name: str,
+        publisher_name: str,
+        lookback_hours: int,
+        limit: int,
+        options: dict[str, Any] | None = None,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        resolved_run_id = str(run_id or str(uuid.uuid4()))
+        resolved_options = dict(options or {})
+        runner = DagWorkflowRunner(workflow_registry)
+        result = await runner.run(
+            WorkflowGraphSpec(
+                run_id=resolved_run_id,
+                workflow_name=workflow_name,
+                source_name=source_name,
+                lookback_hours=lookback_hours,
+                limit=limit,
+                nodes=[
+                    WorkflowNodeSpec(
+                        node_id="fetch",
+                        stage="fetch",
+                        component_name=fetcher_name,
+                        options=dict(resolved_options.get("fetch") or {}),
+                    ),
+                    WorkflowNodeSpec(
+                        node_id="process",
+                        stage="process",
+                        component_name=processor_name,
+                        depends_on=["fetch"],
+                        options=dict(resolved_options.get("process") or {}),
+                    ),
+                    WorkflowNodeSpec(
+                        node_id="publish",
+                        stage="publish",
+                        component_name=publisher_name,
+                        depends_on=["process"],
+                        options=dict(resolved_options.get("publish") or {}),
+                    ),
+                ],
+            )
+        )
+        return {
+            **result,
+            "run_id": resolved_run_id,
+            "workflow_name": workflow_name,
+            "source_name": source_name,
+            "fetcher_name": fetcher_name,
+            "processor_name": processor_name,
+            "publisher_name": publisher_name,
+            "lookback_hours": lookback_hours,
+            "limit": limit,
+            "options": resolved_options,
+        }
 
     def list_content_items(
         self,

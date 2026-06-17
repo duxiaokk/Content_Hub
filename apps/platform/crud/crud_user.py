@@ -17,7 +17,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-import models
+from apps.platform import models
 
 
 def get_user_by_username(db: Session, username: str) -> Optional[models.User]:

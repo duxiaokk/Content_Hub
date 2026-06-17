@@ -8,19 +8,20 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 
-import models
-from core.error_codes import ErrorCode
-from crud.crud_content_item import get_content_item_by_source, update_content_item
-from crud.crud_post import create_post as crud_create_post
-from scheduler_client import get_scheduler_client
-from schemas.console import (
+from apps.platform import models
+from apps.platform.core.error_codes import ErrorCode
+from apps.platform.crud.crud_content_item import get_content_item_by_source, update_content_item
+from apps.platform.crud.crud_post import create_post as crud_create_post
+from apps.platform.scheduler_client import get_scheduler_client
+from apps.platform.schemas.console import (
     PublishToPostRequest,
     SourceConfigCreateRequest,
     SourceConfigUpdateRequest,
     TriggerFetchRequest,
+    TriggerProcessFetchRunRequest,
 )
-from workflow_engine.registry.contracts import SourceItem
-from workflow_engine.runtime.content_repository import ContentRepository
+from apps.workflow_engine.registry.contracts import SourceItem
+from apps.workflow_engine.runtime.content_repository import ContentRepository
 
 
 def _utcnow() -> datetime:
@@ -155,6 +156,36 @@ def trigger_fetch(
         "task_id": fetch_run.task_id,
         "trace_id": fetch_run.trace_id,
         "status": fetch_run.status,
+    }
+
+
+def trigger_process_fetch_run(
+    db: Session,
+    fetch_run: models.FetchRun,
+    body: TriggerProcessFetchRunRequest,
+    requested_by: str,
+) -> dict[str, Any]:
+    payload = {
+        "workflow_name": "radar_pipeline",
+        "fetch_run_id": int(fetch_run.id),
+        "limit": int(body.limit),
+        "source_type": body.source_type,
+        "filter_config": dict(body.filter_config),
+        "process_options": dict(body.process_options),
+        "trigger_type": "manual",
+        "requested_by": requested_by,
+    }
+    idempotency_key = f"console-radar-fetch-run:{fetch_run.id}:{int(_utcnow().timestamp())}"
+    submit = get_scheduler_client().submit_task(
+        task_type="content.pipeline.radar",
+        payload=payload,
+        idempotency_key=idempotency_key,
+    )
+    return {
+        "fetch_run_id": fetch_run.id,
+        "task_id": submit.get("id"),
+        "trace_id": submit.get("trace_id"),
+        "status": str(submit.get("status") or "pending"),
     }
 
 

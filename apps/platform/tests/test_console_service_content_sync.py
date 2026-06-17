@@ -8,7 +8,7 @@ from pathlib import Path
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from services.console_service import build_content_source_id, sync_content_items_from_result
+from apps.platform.services.console_service import build_content_source_id, sync_content_items_from_result
 
 
 class DummyDB:
@@ -35,7 +35,7 @@ def test_sync_content_items_from_result_uses_inline_items(monkeypatch) -> None:
         def attach_fetch_context(self, **kwargs) -> None:  # noqa: ANN003
             updated_items["attach_fetch_context"] = kwargs
 
-    monkeypatch.setattr("services.console_service.ContentRepository", StubRepository)
+    monkeypatch.setattr("apps.platform.services.console_service.ContentRepository", StubRepository)
 
     updated_items = {}
     state = {"created": False}
@@ -66,8 +66,8 @@ def test_sync_content_items_from_result_uses_inline_items(monkeypatch) -> None:
         updated_items.update(kwargs)
         return item
 
-    monkeypatch.setattr("services.console_service.get_content_item_by_source", fake_get_content_item_by_source)
-    monkeypatch.setattr("services.console_service.update_content_item", fake_update_content_item)
+    monkeypatch.setattr("apps.platform.services.console_service.get_content_item_by_source", fake_get_content_item_by_source)
+    monkeypatch.setattr("apps.platform.services.console_service.update_content_item", fake_update_content_item)
 
     db = DummyDB()
     inserted = sync_content_items_from_result(

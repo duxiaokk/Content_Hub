@@ -12,42 +12,18 @@
 - add_comment: 添加评论
 - toggle_post_like: 切换文章点赞
 """
-from services.auth_service import (
-    authenticate_user as authenticate_user,
-)
-from services.auth_service import (
-    change_user_avatar as change_user_avatar,
-)
-from services.auth_service import (
-    register_user as register_user,
-)
-from services.comment_service import (
-    add_comment as add_comment,
-)
-from services.comment_service import (
-    comment_to_dict as comment_to_dict,
-)
-from services.comment_service import (
-    edit_comment as edit_comment,
-)
-from services.comment_service import (
-    list_comment_page as list_comment_page,
-)
-from services.comment_service import (
-    remove_comment as remove_comment,
-)
-from services.comment_service import (
-    toggle_comment_like as toggle_comment_like,
-)
-from services.post_service import (
-    get_post_detail_payload as get_post_detail_payload,
-)
-from services.post_service import (
-    remove_post as remove_post,
-)
-from services.post_service import (
-    toggle_post_like as toggle_post_like,
-)
+from apps.platform.services.auth_service import authenticate_user as authenticate_user
+from apps.platform.services.auth_service import change_user_avatar as change_user_avatar
+from apps.platform.services.auth_service import register_user as register_user
+from apps.platform.services.comment_service import add_comment as add_comment
+from apps.platform.services.comment_service import comment_to_dict as comment_to_dict
+from apps.platform.services.comment_service import edit_comment as edit_comment
+from apps.platform.services.comment_service import list_comment_page as list_comment_page
+from apps.platform.services.comment_service import remove_comment as remove_comment
+from apps.platform.services.comment_service import toggle_comment_like as toggle_comment_like
+from apps.platform.services.post_service import get_post_detail_payload as get_post_detail_payload
+from apps.platform.services.post_service import remove_post as remove_post
+from apps.platform.services.post_service import toggle_post_like as toggle_post_like
 
 __all__ = [
     "authenticate_user",

@@ -20,7 +20,7 @@ from typing import List, Optional, Sequence, Tuple
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-import models
+from apps.platform import models
 
 
 def create_post(

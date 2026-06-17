@@ -4,7 +4,10 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-import models
+try:
+    from apps.platform import models
+except ImportError:  # pragma: no cover - package import fallback
+    import models
 
 
 def get_content_item_by_source(

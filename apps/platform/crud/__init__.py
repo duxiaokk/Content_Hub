@@ -12,9 +12,9 @@
 - get_user_by_username: 按用户名查询用户
 - update_post_like: 更新文章点赞状态
 """
-from crud.crud_post import create_post, delete_post, get_post, get_posts, update_post_like
-from crud.crud_user import get_user_by_username
-from crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
+from apps.platform.crud.crud_post import create_post, delete_post, get_post, get_posts, update_post_like
+from apps.platform.crud.crud_user import get_user_by_username
+from apps.platform.crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
 
 __all__ = [
     "create_content_item",

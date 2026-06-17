@@ -18,7 +18,7 @@ from typing import Optional, Sequence, Set, Tuple
 
 from sqlalchemy.orm import Session
 
-import models
+from apps.platform import models
 
 
 def get_active_post(db: Session, post_id: int) -> Optional[models.Post]:

@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-import models
+from apps.platform import models
 
 
 def get_agent_draft_by_id(db: Session, draft_id: int) -> models.AgentDraft | None:

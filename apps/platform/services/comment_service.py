@@ -17,8 +17,8 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-import models
-from crud.crud_comment import (
+from apps.platform import models
+from apps.platform.crud.crud_comment import (
     create_comment,
     create_comment_like,
     delete_comment_like,
@@ -32,8 +32,8 @@ from crud.crud_comment import (
     soft_delete_comment,
     update_comment_content,
 )
-from crud.crud_user import get_user_by_username
-from web_deps import is_admin
+from apps.platform.crud.crud_user import get_user_by_username
+from apps.platform.web_deps import is_admin
 
 
 def comment_to_dict(comment: models.Comment, username: str, *, liked_by_me: bool = False) -> dict:

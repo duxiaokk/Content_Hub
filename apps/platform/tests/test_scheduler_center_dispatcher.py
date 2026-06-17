@@ -381,37 +381,75 @@ def test_dispatcher_executes_local_fetch_batch(monkeypatch):
     import scheduler_center.dispatcher as dispatcher_module
     from models import ContentItem, FetchRun, SourceConfig
     from apps.platform.database import Base as PlatformBase
+    from apps.fetcher_engine.api.models import FetchBatchError, FetchBatchResult, FetchBatchStats
 
     db_path = os.path.abspath(f"./.tmp_scheduler_dispatcher_test_{uuid.uuid4().hex}.db")
     session_local = _make_session_local(db_path)
     monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
     PlatformBase.metadata.create_all(bind=session_local.kw["bind"])
 
-    class FakeFetcher:
-        async def fetch(self, request):  # noqa: ANN001
-            from apps.workflow_engine.registry.contracts import SourceItem
+    captured_request: dict[str, object] = {}
 
-            return [
-                SourceItem(
-                    source_type="reddit",
-                    source_id="t3_test_1",
-                    title="Test Reddit Post",
-                    source_url="https://example.com/r/test/1",
-                    raw_content="Fetched content",
-                    metadata={"subreddit": "python", "published_at": "2026-06-17T00:00:00+00:00"},
-                )
-            ]
+    class FakeFetchService:
+        def __init__(self, db, source_repo):  # noqa: ANN001
+            self.db = db
+            self.source_repo = source_repo
 
-    def fake_get_fetcher(source_type: str):  # noqa: ANN001
-        assert source_type == "reddit"
-        return lambda **kwargs: FakeFetcher()
+        async def run_sources(self, request):  # noqa: ANN001
+            captured_request["run_id"] = request.run_id
+            captured_request["sources"] = list(request.sources)
+            captured_request["subscription_ids"] = list(request.subscription_ids)
+            captured_request["lookback_hours"] = request.lookback_hours
+            captured_request["limit_per_source"] = request.limit_per_source
+            captured_request["options"] = dict(request.options)
+
+            self.source_repo.create_content_item(
+                self.db,
+                source_type="reddit",
+                source_id="t3_test_1",
+                source_account="python",
+                source_url="https://example.com/r/test/1",
+                title="Test Reddit Post",
+                raw_content="Fetched content",
+                summary="Fetched content",
+                tags_json="[]",
+                language="zh",
+                pipeline_status="fetched",
+                review_status="pending",
+            )
+            return FetchBatchResult(
+                run_id=request.run_id,
+                items=[
+                    {
+                        "source_type": "reddit",
+                        "source_id": "t3_test_1",
+                        "title": "Test Reddit Post",
+                        "source_url": "https://example.com/r/test/1",
+                    }
+                ],
+                errors=[],
+                stats=FetchBatchStats(
+                    total_fetched=1,
+                    total_inserted=1,
+                    total_deduped=0,
+                    sources_succeeded=1,
+                    sources_failed=0,
+                ),
+            )
 
     def fake_load_dependencies():
         import models as platform_models
         from crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
-        from apps.workflow_engine.registry.contracts import FetchRequest
+        from apps.fetcher_engine.api.models import FetchBatchRequest
 
-        return platform_models, create_content_item, get_content_item_by_source, update_content_item, fake_get_fetcher, FetchRequest
+        return (
+            platform_models,
+            create_content_item,
+            get_content_item_by_source,
+            update_content_item,
+            FetchBatchRequest,
+            FakeFetchService,
+        )
 
     monkeypatch.setattr(dispatcher_module, "_load_platform_fetch_dependencies", fake_load_dependencies)
 
@@ -470,6 +508,14 @@ def test_dispatcher_executes_local_fetch_batch(monkeypatch):
     task_row = db.query(SchedulerTask).filter(SchedulerTask.id == task.id).first()
     assert task_row is not None
     assert task_row.status == dispatcher_module.TaskStatus.SUCCEEDED
+    assert captured_request == {
+        "run_id": task.id,
+        "sources": ["reddit"],
+        "subscription_ids": [source.id],
+        "lookback_hours": 24,
+        "limit_per_source": 5,
+        "options": {"subreddit": "python", "sort": "new"},
+    }
 
     fetch_run_row = db.query(FetchRun).filter(FetchRun.task_id == task.id).first()
     assert fetch_run_row is not None
@@ -481,5 +527,121 @@ def test_dispatcher_executes_local_fetch_batch(monkeypatch):
     assert content_item is not None
     assert content_item.fetch_run_id == fetch_run_row.id
     assert content_item.pipeline_status == "fetched"
+    db.close()
+
+
+def test_dispatcher_marks_local_fetch_batch_failed_when_fetch_service_returns_errors(monkeypatch):
+    import scheduler_center.dispatcher as dispatcher_module
+    from models import FetchRun, SourceConfig
+    from apps.platform.database import Base as PlatformBase
+    from apps.fetcher_engine.api.models import FetchBatchError, FetchBatchResult, FetchBatchStats
+
+    db_path = os.path.abspath(f"./.tmp_scheduler_dispatcher_test_{uuid.uuid4().hex}.db")
+    session_local = _make_session_local(db_path)
+    monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
+    PlatformBase.metadata.create_all(bind=session_local.kw["bind"])
+
+    class FakeFetchService:
+        def __init__(self, db, source_repo):  # noqa: ANN001
+            self.db = db
+            self.source_repo = source_repo
+
+        async def run_sources(self, request):  # noqa: ANN001
+            return FetchBatchResult(
+                run_id=request.run_id,
+                items=[],
+                errors=[
+                    FetchBatchError(
+                        source="reddit",
+                        error="upstream fetch failed",
+                        traceback=None,
+                    )
+                ],
+                stats=FetchBatchStats(
+                    total_fetched=0,
+                    total_inserted=0,
+                    total_deduped=0,
+                    sources_succeeded=0,
+                    sources_failed=1,
+                ),
+            )
+
+    def fake_load_dependencies():
+        import models as platform_models
+        from crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
+        from apps.fetcher_engine.api.models import FetchBatchRequest
+
+        return (
+            platform_models,
+            create_content_item,
+            get_content_item_by_source,
+            update_content_item,
+            FetchBatchRequest,
+            FakeFetchService,
+        )
+
+    monkeypatch.setattr(dispatcher_module, "_load_platform_fetch_dependencies", fake_load_dependencies)
+
+    db = session_local()
+    source = SourceConfig(
+        name="Reddit Python",
+        source_type="reddit",
+        enabled=True,
+        channels='["r/python"]',
+        keywords='[]',
+        lookback_hours=24,
+        item_limit=20,
+        dedup_window_hours=24,
+        config_json='{"subreddit":"python","sort":"new"}',
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    task = SchedulerTask(
+        id=str(uuid.uuid4()),
+        idempotency_key=None,
+        trace_id="trace-fetch-batch-failed-1",
+        task_type="content.fetch.batch",
+        payload_json='{"source_config_id": %d, "source_type": "reddit", "lookback_hours": 24, "limit": 5, "config": {"subreddit": "python", "sort": "new"}}' % source.id,
+        status=dispatcher_module.TaskStatus.RUNNING,
+        cancel_requested=0,
+        max_retries=0,
+        retry_delay_seconds=0.0,
+        attempt_count=0,
+        next_run_at=None,
+        last_agent=None,
+        result_json=None,
+        last_error=None,
+    )
+    db.add(task)
+    db.commit()
+
+    fetch_run = FetchRun(
+        source_config_id=source.id,
+        trigger_mode="manual",
+        status="pending",
+        task_id=task.id,
+        trace_id=task.trace_id,
+        requested_by="tester",
+        request_payload=task.payload_json,
+    )
+    db.add(fetch_run)
+    db.commit()
+    db.close()
+
+    dispatcher = dispatcher_module.SchedulerDispatcher()
+    dispatcher._execute_task(task.id)
+
+    db = session_local()
+    task_row = db.query(SchedulerTask).filter(SchedulerTask.id == task.id).first()
+    assert task_row is not None
+    assert task_row.status == dispatcher_module.TaskStatus.FAILED
+    assert task_row.last_error == "upstream fetch failed"
+
+    fetch_run_row = db.query(FetchRun).filter(FetchRun.task_id == task.id).first()
+    assert fetch_run_row is not None
+    assert fetch_run_row.status == "failure"
+    assert fetch_run_row.error_message == "upstream fetch failed"
     db.close()
 

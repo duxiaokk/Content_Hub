@@ -67,10 +67,10 @@ def _load_platform_fetch_dependencies():
             update_content_item,
         )
 
-    from apps.fetcher_engine.api.registry import get_fetcher
-    from apps.workflow_engine.registry.contracts import FetchRequest
+    from apps.fetcher_engine.api.models import FetchBatchRequest
+    from apps.fetcher_engine.api.service import FetchService
 
-    return platform_models, create_content_item, get_content_item_by_source, update_content_item, get_fetcher, FetchRequest
+    return platform_models, create_content_item, get_content_item_by_source, update_content_item, FetchBatchRequest, FetchService
 
 
 class TaskStatus:
@@ -973,8 +973,8 @@ class SchedulerDispatcher:
             create_content_item,
             get_content_item_by_source,
             update_content_item,
-            get_fetcher,
-            FetchRequest,
+            FetchBatchRequest,
+            FetchService,
         ) = _load_platform_fetch_dependencies()
 
         source_config_id = int(payload.get("source_config_id") or 0)
@@ -991,93 +991,30 @@ class SchedulerDispatcher:
         if not source_type:
             raise ValueError("source_type is required")
 
-        fetcher_factory = get_fetcher(source_type)
-        if fetcher_factory is None:
-            raise ValueError(f"fetcher not registered for source_type={source_type}")
+        request_options = payload.get("config")
+        if not isinstance(request_options, dict):
+            request_options = {}
 
-        config = payload.get("config")
-        if not isinstance(config, dict):
-            config = {}
-        channels = payload.get("channels")
-        if not isinstance(channels, list):
-            channels = []
-
-        fetcher = self._build_local_fetcher(
-            fetcher_factory=fetcher_factory,
-            source_type=source_type,
-            source_name=str(payload.get("source_name") or source.name or source_type),
-            channels=channels,
-            config=config,
+        source_repo = self._build_platform_fetch_source_repo(
+            platform_models=platform_models,
+            create_content_item=create_content_item,
+            get_content_item_by_source=get_content_item_by_source,
+            update_content_item=update_content_item,
+            source=source,
+            payload=payload,
         )
-        items = await fetcher.fetch(
-            FetchRequest(
-                source_name=str(payload.get("source_name") or source.name or source_type),
+        service = FetchService(db, source_repo)
+        result = await service.run_sources(
+            FetchBatchRequest(
+                run_id=task.id,
+                sources=[source_type],
+                subscription_ids=[source.id],
                 lookback_hours=int(payload.get("lookback_hours") or source.lookback_hours or 24),
-                limit=int(payload.get("limit") or source.item_limit or 20),
-                cursor=source.last_cursor,
-                options=config,
+                limit_per_source=int(payload.get("limit") or source.item_limit or 20),
+                options=request_options,
             )
         )
-
-        deduped_count = 0
-        inserted_count = 0
-        serialized_items: list[dict[str, Any]] = []
-
-        for item in items:
-            existing = get_content_item_by_source(db, item.source_type, item.source_id)
-            if existing is not None:
-                deduped_count += 1
-                update_content_item(
-                    db,
-                    existing,
-                    source_config_id=source.id,
-                    source_url=item.source_url,
-                    title=item.title,
-                    raw_content=item.raw_content,
-                    summary=item.raw_content,
-                    pipeline_status="fetched",
-                    error_message=None,
-                )
-                continue
-
-            created = create_content_item(
-                db,
-                source_config_id=source.id,
-                fetch_run_id=None,
-                source_type=item.source_type,
-                source_id=item.source_id,
-                source_account=self._extract_source_account(item.metadata),
-                source_url=item.source_url,
-                title=item.title,
-                language="zh",
-                raw_content=item.raw_content,
-                processed_content=None,
-                summary=item.raw_content,
-                tags_json="[]",
-                score=0,
-                publish_status="pending",
-                pipeline_status="fetched",
-                review_status="pending",
-                digest_included=False,
-                error_message=None,
-            )
-            inserted_count += 1
-            serialized_items.append(
-                {
-                    "id": created.id,
-                    "source_type": item.source_type,
-                    "source_id": item.source_id,
-                    "title": item.title,
-                    "link": item.source_url,
-                    "content": item.raw_content,
-                    "metadata": item.metadata,
-                }
-            )
-
-        source.last_run_at = _utcnow()
-        if items:
-            source.last_cursor = self._build_local_cursor(items[0])
-        db.add(source)
+        serialized_items = list(result.items)
 
         fetch_run = (
             db.query(platform_models.FetchRun)
@@ -1086,13 +1023,13 @@ class SchedulerDispatcher:
             .first()
         )
         if fetch_run is not None:
-            fetch_run.status = "success"
+            fetch_run.status = "success" if not result.errors else "failure"
             fetch_run.trace_id = task.trace_id
-            fetch_run.fetched_count = len(items)
-            fetch_run.inserted_count = inserted_count
-            fetch_run.deduped_count = deduped_count
+            fetch_run.fetched_count = int(result.stats.total_fetched)
+            fetch_run.inserted_count = int(result.stats.total_inserted)
+            fetch_run.deduped_count = int(result.stats.total_deduped)
             fetch_run.finished_at = _utcnow()
-            fetch_run.error_message = None
+            fetch_run.error_message = result.errors[0].error if result.errors else None
             db.add(fetch_run)
             for item in serialized_items:
                 content_item = get_content_item_by_source(db, item["source_type"], item["source_id"])
@@ -1101,82 +1038,124 @@ class SchedulerDispatcher:
                     db.add(content_item)
 
         db.commit()
+        if result.stats.sources_failed > 0 or result.errors:
+            first_error = result.errors[0].error if result.errors else "fetch batch failed"
+            raise RuntimeError(first_error)
         return {
             "run_id": task.id,
             "items": serialized_items,
-            "fetched_count": len(items),
-            "inserted_count": inserted_count,
-            "deduped_count": deduped_count,
-            "stats": {
-                "total_fetched": len(items),
-                "total_inserted": inserted_count,
-                "total_deduped": deduped_count,
-                "sources_succeeded": 1,
-                "sources_failed": 0,
-            },
-            "errors": [],
+            "fetched_count": int(result.stats.total_fetched),
+            "inserted_count": int(result.stats.total_inserted),
+            "deduped_count": int(result.stats.total_deduped),
+            "stats": result.stats.model_dump(),
+            "errors": [error.model_dump() for error in result.errors],
         }
 
-    def _build_local_fetcher(
+    def _build_platform_fetch_source_repo(
         self,
         *,
-        fetcher_factory: Any,
-        source_type: str,
-        source_name: str,
-        channels: list[Any],
-        config: dict[str, Any],
+        platform_models: Any,
+        create_content_item: Any,
+        get_content_item_by_source: Any,
+        update_content_item: Any,
+        source: Any,
+        payload: dict[str, Any],
     ) -> Any:
-        kwargs: dict[str, Any] = {}
-        if source_type == "rss":
-            feed_url = str(config.get("feed_url") or config.get("url") or "").strip()
-            if not feed_url:
-                raise ValueError("rss source requires config.feed_url")
-            kwargs["feed_url"] = feed_url
-            kwargs["source_name"] = source_name
-            kwargs["stream_key"] = f"rss:{source_name}"
-        elif source_type in {"cnblogs", "bilibili"}:
-            feed_url = str(config.get("feed_url") or "").strip()
-            if feed_url:
-                kwargs["feed_url"] = feed_url
-            kwargs["stream_key"] = f"{source_type}:{source_name}"
-        elif source_type == "github_trending":
-            kwargs["language"] = str(config.get("language") or "").strip()
-            kwargs["since"] = str(config.get("since") or "daily").strip() or "daily"
-            kwargs["spoken_language"] = str(config.get("spoken_language") or "").strip()
-            kwargs["stream_key"] = f"github_trending:{source_name}"
-        elif source_type == "reddit":
-            subreddit = str(
-                config.get("subreddit")
-                or (channels[0] if channels else "")
-                or source_name
-            ).strip()
-            kwargs["subreddit"] = subreddit
-            kwargs["sort"] = str(config.get("sort") or "hot").strip() or "hot"
-            kwargs["limit"] = int(config.get("limit") or 25)
-            kwargs["stream_key"] = f"reddit:{subreddit}"
-        return fetcher_factory(**kwargs)
+        del get_content_item_by_source
+        del update_content_item
 
-    def _build_local_cursor(self, item: Any) -> str | None:
-        published_at = None
-        if isinstance(getattr(item, "metadata", None), dict):
-            published_at = item.metadata.get("published_at")
-        payload = {
-            "external_id": getattr(item, "source_id", None),
-            "published_at": str(published_at) if published_at else None,
-            "fetched_at": _utcnow().isoformat(),
-        }
-        if not payload["external_id"] and not payload["published_at"]:
-            return None
-        return json.dumps(payload, ensure_ascii=True)
+        class _PlatformFetchSourceRepo:
+            ContentItem = platform_models.ContentItem
+            SourceSubscription = platform_models.SourceConfig
 
-    def _extract_source_account(self, metadata: Any) -> str | None:
-        if not isinstance(metadata, dict):
-            return None
-        for key in ("source_account", "author", "subreddit"):
-            value = metadata.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        return None
+            @staticmethod
+            def create_content_item(db: Session, **kwargs: Any):
+                normalized = dict(kwargs)
+                normalized.setdefault("source_config_id", source.id)
+                normalized.setdefault("processed_content", None)
+                normalized.setdefault("publish_target", None)
+                normalized.setdefault("publish_status", "pending")
+                normalized.setdefault("pipeline_status", "fetched")
+                normalized.setdefault("review_status", "pending")
+                normalized.setdefault("digest_included", False)
+                normalized.setdefault("error_message", None)
+                return create_content_item(db, **normalized)
+
+            @staticmethod
+            def load_subscriptions(db: Session, *, sources: list[str], subscription_ids: list[int]) -> list[Any]:
+                query = db.query(platform_models.SourceConfig).filter(platform_models.SourceConfig.enabled.is_(True))
+                if subscription_ids:
+                    query = query.filter(platform_models.SourceConfig.id.in_(subscription_ids))
+                if sources:
+                    query = query.filter(platform_models.SourceConfig.source_type.in_(sources))
+                return list(query.order_by(platform_models.SourceConfig.id.asc()).all())
+
+            @staticmethod
+            def update_cursor(db: Session, subscription: Any, cursor_value: str) -> None:
+                subscription.last_cursor = cursor_value
+                subscription.last_run_at = _utcnow()
+                db.add(subscription)
+                db.commit()
+
+        def _feed_url(subscription: Any) -> str | None:
+            raw_config = str(getattr(subscription, "config_json", "") or "").strip()
+            config_data: dict[str, Any] = {}
+            if raw_config:
+                try:
+                    parsed = json.loads(raw_config)
+                    if isinstance(parsed, dict):
+                        config_data = parsed
+                except Exception:
+                    config_data = {}
+            feed_url = str(config_data.get("feed_url") or config_data.get("url") or "").strip()
+            return feed_url or None
+
+        original_loader = _PlatformFetchSourceRepo.load_subscriptions
+
+        @staticmethod
+        def _load_subscriptions_with_mapping(db: Session, *, sources: list[str], subscription_ids: list[int]) -> list[Any]:
+            rows = original_loader(db, sources=sources, subscription_ids=subscription_ids)
+            mapped: list[Any] = []
+            for row in rows:
+                account_identifier = None
+                channels = getattr(row, "channels", None)
+                if isinstance(channels, str) and channels.strip():
+                    try:
+                        parsed_channels = json.loads(channels)
+                        if isinstance(parsed_channels, list) and parsed_channels:
+                            first_channel = parsed_channels[0]
+                            if isinstance(first_channel, str) and first_channel.strip():
+                                account_identifier = first_channel.strip()
+                    except Exception:
+                        account_identifier = None
+                config_payload = payload.get("config")
+                config_data = config_payload if isinstance(config_payload, dict) else {}
+                if row.source_type == "reddit":
+                    account_identifier = str(
+                        config_data.get("subreddit")
+                        or account_identifier
+                        or row.name
+                    ).strip()
+                mapped.append(
+                    type(
+                        "PlatformSourceSubscription",
+                        (),
+                        {
+                            "id": row.id,
+                            "source_type": row.source_type,
+                            "source_name": row.name,
+                            "account_identifier": account_identifier,
+                            "feed_url": _feed_url(row),
+                            "enabled": row.enabled,
+                            "default_tags": None,
+                            "last_cursor": row.last_cursor,
+                        },
+                    )()
+                )
+            return mapped
+
+        _PlatformFetchSourceRepo.load_subscriptions = _load_subscriptions_with_mapping
+        return _PlatformFetchSourceRepo
 
     def _execute_scheduled_radar(
         self,

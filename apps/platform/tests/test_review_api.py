@@ -18,10 +18,10 @@ for path in (PLATFORM_DIR, REPO_ROOT):
     if path_str not in sys.path:
         sys.path.insert(0, path_str)
 
-from database import get_db
 from apps.platform.database import Base
-from models import ContentItem, ReviewQueue  # noqa: F401
-from routers.reviews import router
+from apps.platform.database import get_db
+from apps.platform.models import ContentItem, ReviewQueue  # noqa: F401
+from apps.platform.routers.reviews import router
 
 
 def _build_client() -> tuple[TestClient, sessionmaker]:
@@ -178,3 +178,77 @@ def test_approve_review_with_edits_persists_edited_content() -> None:
     assert item.rewritten_title == "Edited Title"
     assert item.rewritten_content == "Edited Content"
     db.close()
+
+
+def test_list_reviews_returns_radar_generated_queue_item() -> None:
+    import asyncio
+
+    from apps.platform.models import RewriteProfile
+    from apps.workflow_engine.api.service import WorkflowEngineService
+    import apps.platform.database as platform_database
+    import apps.workflow_engine.api.service as workflow_service_module
+    import apps.workflow_engine.runtime.content_repository as content_repository_module
+
+    client, session_factory = _build_client()
+    original_platform_session = platform_database.SessionLocal
+    original_workflow_session = workflow_service_module.SessionLocal
+    original_repository_session = content_repository_module.SessionLocal
+    platform_database.SessionLocal = session_factory
+    workflow_service_module.SessionLocal = session_factory
+    content_repository_module.SessionLocal = session_factory
+    try:
+        db = session_factory()
+        db.add(
+            RewriteProfile(
+                name="zh_tech_blog",
+                provider="local",
+                model="mock-model",
+                timeout_seconds=30,
+                fallback_strategy="raw",
+                system_prompt="test prompt",
+                max_tokens=256,
+            )
+        )
+        db.add(
+            ContentItem(
+                source_type="rss",
+                source_id="radar-review-item",
+                fetch_run_id=88,
+                title="Radar Review Item",
+                source_url="https://example.com/radar-review-item",
+                language="zh",
+                raw_content="Python content for radar review queue",
+                tags_json="[]",
+                score=0,
+                publish_status="pending",
+                pipeline_status="fetched",
+                review_status="pending",
+                digest_included=False,
+            )
+        )
+        db.commit()
+        db.close()
+
+        service = WorkflowEngineService()
+        result = asyncio.run(
+            service.run_radar_pipeline(
+                {
+                    "run_id": "review-api-radar",
+                    "fetch_run_id": 88,
+                    "limit": 10,
+                }
+            )
+        )
+        assert result["errors"] == []
+
+        response = client.get("/api/internal/content/reviews/?status=pending")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["code"] == 0
+        assert body["data"]["total"] == 1
+        assert body["data"]["items"][0]["original_title"] == "Radar Review Item"
+        assert body["data"]["items"][0]["status"] == "pending"
+    finally:
+        platform_database.SessionLocal = original_platform_session
+        workflow_service_module.SessionLocal = original_workflow_session
+        content_repository_module.SessionLocal = original_repository_session

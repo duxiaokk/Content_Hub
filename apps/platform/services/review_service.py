@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 
-from models import ContentItem, ReviewQueue
-from schemas.review import ReviewApproveRequest, ReviewQueueOut, ReviewRejectRequest
+from apps.platform.models import ContentItem, ReviewQueue
+from apps.platform.schemas.review import ReviewApproveRequest, ReviewQueueOut, ReviewRejectRequest
 
 
 def _utcnow() -> datetime:

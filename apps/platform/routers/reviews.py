@@ -3,9 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from database import get_db
-from schemas.review import ReviewApproveRequest, ReviewRejectRequest
-from services.review_service import ReviewNotFoundError, ReviewService
+from apps.platform.database import get_db
+from apps.platform.schemas.review import ReviewApproveRequest, ReviewRejectRequest
+from apps.platform.services.review_service import ReviewNotFoundError, ReviewService
 
 router = APIRouter(prefix="/api/internal/content/reviews", tags=["reviews"])
 

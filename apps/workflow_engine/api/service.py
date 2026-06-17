@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from apps.ai_processor.api.service import AIProcessingService
 from apps.ai_processor.runtime.config import load_ai_processor_config
 from apps.platform.database import SessionLocal
-from apps.platform.models import ContentItem, PublishRecord, WorkflowRun
+from apps.platform.models import ContentItem, PublishRecord, ReviewQueue, WorkflowRun
 from apps.workflow_engine.pipeline import DagWorkflowRunner, WorkflowGraphSpec, WorkflowNodeSpec
 from apps.workflow_engine.pipeline.filter_node import FilterNode
 from apps.workflow_engine.registry.bootstrap import build_default_registry
@@ -36,6 +36,20 @@ class WorkflowEngineService:
     def _ensure_registry_ready() -> None:
         if not workflow_registry.fetchers:
             build_default_registry()
+
+    @staticmethod
+    def _upsert_review_queue_entry(db: Session, item: ContentItem) -> ReviewQueue:
+        row = db.query(ReviewQueue).filter(ReviewQueue.content_item_id == item.id).first()
+        if row is None:
+            row = ReviewQueue(content_item_id=item.id)
+        row.candidate_title = item.rewritten_title
+        row.candidate_content = item.rewritten_content
+        row.status = "pending"
+        row.reviewer = None
+        row.review_note = None
+        row.reviewed_at = None
+        db.add(row)
+        return row
 
     async def run_radar_pipeline(self, request: dict[str, Any]) -> dict[str, Any]:
         db: Session = SessionLocal()
@@ -157,6 +171,17 @@ class WorkflowEngineService:
             )
 
             trace.log_step_start("review_prepare", items_in=len(review_items))
+            review_queue_ids: list[int] = []
+            for item in rows:
+                if item.pipeline_status != "processed":
+                    continue
+                item.review_status = "pending"
+                queue_row = self._upsert_review_queue_entry(db, item)
+                db.add(item)
+                db.flush()
+                if queue_row.id is not None:
+                    review_queue_ids.append(int(queue_row.id))
+            db.commit()
             trace.log_step_end("review_prepare", status="success", items_out=len(review_items))
 
             trace.error_summary = "; ".join(error["error"] for error in errors[:3]) or None
@@ -170,6 +195,7 @@ class WorkflowEngineService:
                 "steps": RADAR_PIPELINE_STEPS,
                 "filtered_out": filter_result.filtered_out,
                 "review_items": [asdict(item) for item in review_items],
+                "review_queue_ids": review_queue_ids,
                 "errors": errors,
                 "trace_payload": trace.snapshot(),
             }

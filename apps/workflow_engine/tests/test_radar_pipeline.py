@@ -7,7 +7,7 @@ import os
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from apps.platform.database import Base
-from apps.platform.models import ContentItem, PublishRecord, RewriteProfile, WorkflowRun
+from apps.platform.models import ContentItem, PublishRecord, ReviewQueue, RewriteProfile, WorkflowRun
 from apps.workflow_engine.api.service import WorkflowEngineService
 from apps.workflow_engine.pipeline.filter_node import FilterNode
 from apps.workflow_engine.registry.contracts import ContentAsset, DigestResult, FilterResult, ReviewItem
@@ -215,6 +215,99 @@ def test_workflow_service_filters_radar_pipeline_by_fetch_run_id():
         assert result["errors"] == []
         assert len(result["review_items"]) == 1
         assert result["review_items"][0]["original_url"] == "https://example.com/item-fetch-run-1"
+        verify_db = factory()
+        queues = verify_db.query(ReviewQueue).order_by(ReviewQueue.content_item_id.asc()).all()
+        items = verify_db.query(ContentItem).order_by(ContentItem.id.asc()).all()
+        assert len(queues) == 1
+        assert int(queues[0].content_item_id) == int(items[0].id)
+        assert queues[0].status == "pending"
+        assert items[0].fetch_run_id == 11
+        assert items[0].review_status == "pending"
+        assert items[1].fetch_run_id == 22
+        assert items[1].review_status == "pending"
+        verify_db.close()
+    finally:
+        platform_database.SessionLocal = original_platform_session
+        workflow_service_module.SessionLocal = original_workflow_session
+        content_repository_module.SessionLocal = original_repository_session
+
+
+def test_workflow_service_creates_review_queue_entries_for_processed_items():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import apps.platform.database as platform_database
+    import apps.workflow_engine.api.service as workflow_service_module
+    import apps.workflow_engine.runtime.content_repository as content_repository_module
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+    original_platform_session = platform_database.SessionLocal
+    original_workflow_session = workflow_service_module.SessionLocal
+    original_repository_session = content_repository_module.SessionLocal
+    platform_database.SessionLocal = factory
+    workflow_service_module.SessionLocal = factory
+    content_repository_module.SessionLocal = factory
+    try:
+        db = factory()
+        db.add(
+            RewriteProfile(
+                name="zh_tech_blog",
+                provider="local",
+                model="mock-model",
+                timeout_seconds=30,
+                fallback_strategy="raw",
+                system_prompt="test prompt",
+                max_tokens=256,
+            )
+        )
+        db.add(
+            ContentItem(
+                source_type="rss",
+                source_id="item-queue-1",
+                fetch_run_id=33,
+                title="Queue item",
+                source_url="https://example.com/item-queue-1",
+                language="zh",
+                raw_content="Queue content with Python",
+                tags_json="[]",
+                score=0,
+                publish_status="pending",
+                pipeline_status="fetched",
+                review_status="pending",
+                digest_included=False,
+            )
+        )
+        db.commit()
+        db.close()
+
+        service = WorkflowEngineService()
+        result = asyncio.run(
+            service.run_radar_pipeline(
+                {
+                    "run_id": "radar-review-queue",
+                    "fetch_run_id": 33,
+                    "limit": 10,
+                }
+            )
+        )
+
+        assert result["errors"] == []
+        assert len(result["review_items"]) == 1
+        assert len(result["review_queue_ids"]) == 1
+
+        verify_db = factory()
+        item = verify_db.query(ContentItem).filter(ContentItem.source_id == "item-queue-1").first()
+        review = verify_db.query(ReviewQueue).filter(ReviewQueue.content_item_id == item.id).first()
+        assert item is not None
+        assert item.pipeline_status == "processed"
+        assert item.review_status == "pending"
+        assert review is not None
+        assert review.status == "pending"
+        assert review.candidate_title == item.rewritten_title
+        assert review.candidate_content == item.rewritten_content
+        verify_db.close()
     finally:
         platform_database.SessionLocal = original_platform_session
         workflow_service_module.SessionLocal = original_workflow_session

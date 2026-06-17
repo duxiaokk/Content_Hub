@@ -173,4 +173,7 @@ def _load_fallback_settings() -> Settings:
 settings = Settings() if _HAS_PYDANTIC_SETTINGS else _load_fallback_settings()
 
 if not settings.secret_key:
-    raise RuntimeError("SECRET_KEY is required")
+    if os.getenv("CONTENT_HUB_ENV", "development").strip().lower() in {"development", "dev", "local"}:
+        settings.secret_key = "local-dev-secret-key"
+    else:
+        raise RuntimeError("SECRET_KEY is required")

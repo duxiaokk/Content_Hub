@@ -55,6 +55,24 @@ def _load_content_domain_client():
     return ContentDomainClient
 
 
+def _load_platform_fetch_dependencies():
+    try:
+        import models as platform_models
+        from crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
+    except ImportError:  # pragma: no cover - package import fallback
+        from apps.platform import models as platform_models
+        from apps.platform.crud.crud_content_item import (
+            create_content_item,
+            get_content_item_by_source,
+            update_content_item,
+        )
+
+    from apps.fetcher_engine.api.registry import get_fetcher
+    from apps.workflow_engine.registry.contracts import FetchRequest
+
+    return platform_models, create_content_item, get_content_item_by_source, update_content_item, get_fetcher, FetchRequest
+
+
 class TaskStatus:
     PENDING = "PENDING"
     RUNNING = "RUNNING"
@@ -483,6 +501,15 @@ class SchedulerDispatcher:
                 )
                 return
 
+            if task.task_type == "content.fetch.batch":
+                self._execute_local_fetch_batch(
+                    db=db,
+                    task=task,
+                    attempt_no=attempt_no,
+                    payload=payload,
+                )
+                return
+
             agent = self._choose_agent(db, task.task_type)
 
             attempt = SchedulerTaskAttempt(
@@ -847,6 +874,309 @@ class SchedulerDispatcher:
                 str(exc),
                 retryable=False,
             )
+
+    def _execute_local_fetch_batch(
+        self,
+        *,
+        db: Session,
+        task: SchedulerTask,
+        attempt_no: int,
+        payload: dict[str, Any],
+    ) -> None:
+        trace_id = task.trace_id or str(uuid.uuid4())
+        attempt = SchedulerTaskAttempt(
+            task_id=task.id,
+            attempt_no=attempt_no,
+            agent="local-fetch-batch",
+            trace_id=trace_id,
+            status=TaskStatus.RUNNING,
+            started_at=_utcnow(),
+            request_url="local://fetcher_engine/fetch_batch",
+            request_json=json.dumps(payload, ensure_ascii=False)[:20000],
+        )
+        db.add(attempt)
+        task.last_agent = "local-fetch-batch"
+        task.updated_at = _utcnow()
+        self._append_event(
+            db,
+            task_id=task.id,
+            trace_id=trace_id,
+            event_type="ATTEMPT_STARTED",
+            from_status=TaskStatus.RUNNING,
+            to_status=TaskStatus.RUNNING,
+            attempt_no=attempt_no,
+            message="executing local fetch batch",
+        )
+        db.commit()
+        db.refresh(attempt)
+
+        try:
+            result_obj = asyncio.run(self._run_local_fetch_batch(db=db, task=task, payload=payload))
+            now = _utcnow()
+            attempt.status = TaskStatus.SUCCEEDED
+            attempt.finished_at = now
+            attempt.response_text = json.dumps(result_obj, ensure_ascii=False)[:20000]
+            task.status = TaskStatus.SUCCEEDED
+            task.attempt_count = attempt_no
+            task.result_json = json.dumps(result_obj, ensure_ascii=False)
+            task.last_error = None
+            task.next_run_at = None
+            task.updated_at = now
+            self._append_log(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                level="INFO",
+                message=f"local fetch batch succeeded on attempt {attempt_no}",
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="ATTEMPT_FINISHED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            self._append_event(
+                db,
+                task_id=task.id,
+                trace_id=trace_id,
+                event_type="STATUS_CHANGED",
+                from_status=TaskStatus.RUNNING,
+                to_status=TaskStatus.SUCCEEDED,
+                attempt_no=attempt_no,
+                message=None,
+            )
+            db.commit()
+        except Exception as exc:
+            attempt.retryable = 0
+            self._mark_retry_or_fail(
+                db,
+                task,
+                attempt,
+                attempt_no,
+                str(exc),
+                retryable=False,
+            )
+
+    async def _run_local_fetch_batch(
+        self,
+        *,
+        db: Session,
+        task: SchedulerTask,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        (
+            platform_models,
+            create_content_item,
+            get_content_item_by_source,
+            update_content_item,
+            get_fetcher,
+            FetchRequest,
+        ) = _load_platform_fetch_dependencies()
+
+        source_config_id = int(payload.get("source_config_id") or 0)
+        if source_config_id <= 0:
+            raise ValueError("source_config_id is required")
+
+        source = db.query(platform_models.SourceConfig).filter(platform_models.SourceConfig.id == source_config_id).first()
+        if source is None:
+            raise ValueError(f"source config not found: {source_config_id}")
+        if not bool(source.enabled):
+            raise ValueError(f"source config disabled: {source_config_id}")
+
+        source_type = str(payload.get("source_type") or source.source_type or "").strip()
+        if not source_type:
+            raise ValueError("source_type is required")
+
+        fetcher_factory = get_fetcher(source_type)
+        if fetcher_factory is None:
+            raise ValueError(f"fetcher not registered for source_type={source_type}")
+
+        config = payload.get("config")
+        if not isinstance(config, dict):
+            config = {}
+        channels = payload.get("channels")
+        if not isinstance(channels, list):
+            channels = []
+
+        fetcher = self._build_local_fetcher(
+            fetcher_factory=fetcher_factory,
+            source_type=source_type,
+            source_name=str(payload.get("source_name") or source.name or source_type),
+            channels=channels,
+            config=config,
+        )
+        items = await fetcher.fetch(
+            FetchRequest(
+                source_name=str(payload.get("source_name") or source.name or source_type),
+                lookback_hours=int(payload.get("lookback_hours") or source.lookback_hours or 24),
+                limit=int(payload.get("limit") or source.item_limit or 20),
+                cursor=source.last_cursor,
+                options=config,
+            )
+        )
+
+        deduped_count = 0
+        inserted_count = 0
+        serialized_items: list[dict[str, Any]] = []
+
+        for item in items:
+            existing = get_content_item_by_source(db, item.source_type, item.source_id)
+            if existing is not None:
+                deduped_count += 1
+                update_content_item(
+                    db,
+                    existing,
+                    source_config_id=source.id,
+                    source_url=item.source_url,
+                    title=item.title,
+                    raw_content=item.raw_content,
+                    summary=item.raw_content,
+                    pipeline_status="fetched",
+                    error_message=None,
+                )
+                continue
+
+            created = create_content_item(
+                db,
+                source_config_id=source.id,
+                fetch_run_id=None,
+                source_type=item.source_type,
+                source_id=item.source_id,
+                source_account=self._extract_source_account(item.metadata),
+                source_url=item.source_url,
+                title=item.title,
+                language="zh",
+                raw_content=item.raw_content,
+                processed_content=None,
+                summary=item.raw_content,
+                tags_json="[]",
+                score=0,
+                publish_status="pending",
+                pipeline_status="fetched",
+                review_status="pending",
+                digest_included=False,
+                error_message=None,
+            )
+            inserted_count += 1
+            serialized_items.append(
+                {
+                    "id": created.id,
+                    "source_type": item.source_type,
+                    "source_id": item.source_id,
+                    "title": item.title,
+                    "link": item.source_url,
+                    "content": item.raw_content,
+                    "metadata": item.metadata,
+                }
+            )
+
+        source.last_run_at = _utcnow()
+        if items:
+            source.last_cursor = self._build_local_cursor(items[0])
+        db.add(source)
+
+        fetch_run = (
+            db.query(platform_models.FetchRun)
+            .filter(platform_models.FetchRun.task_id == task.id)
+            .order_by(platform_models.FetchRun.id.desc())
+            .first()
+        )
+        if fetch_run is not None:
+            fetch_run.status = "success"
+            fetch_run.trace_id = task.trace_id
+            fetch_run.fetched_count = len(items)
+            fetch_run.inserted_count = inserted_count
+            fetch_run.deduped_count = deduped_count
+            fetch_run.finished_at = _utcnow()
+            fetch_run.error_message = None
+            db.add(fetch_run)
+            for item in serialized_items:
+                content_item = get_content_item_by_source(db, item["source_type"], item["source_id"])
+                if content_item is not None:
+                    content_item.fetch_run_id = fetch_run.id
+                    db.add(content_item)
+
+        db.commit()
+        return {
+            "run_id": task.id,
+            "items": serialized_items,
+            "fetched_count": len(items),
+            "inserted_count": inserted_count,
+            "deduped_count": deduped_count,
+            "stats": {
+                "total_fetched": len(items),
+                "total_inserted": inserted_count,
+                "total_deduped": deduped_count,
+                "sources_succeeded": 1,
+                "sources_failed": 0,
+            },
+            "errors": [],
+        }
+
+    def _build_local_fetcher(
+        self,
+        *,
+        fetcher_factory: Any,
+        source_type: str,
+        source_name: str,
+        channels: list[Any],
+        config: dict[str, Any],
+    ) -> Any:
+        kwargs: dict[str, Any] = {}
+        if source_type == "rss":
+            feed_url = str(config.get("feed_url") or config.get("url") or "").strip()
+            if not feed_url:
+                raise ValueError("rss source requires config.feed_url")
+            kwargs["feed_url"] = feed_url
+            kwargs["source_name"] = source_name
+            kwargs["stream_key"] = f"rss:{source_name}"
+        elif source_type in {"cnblogs", "bilibili"}:
+            feed_url = str(config.get("feed_url") or "").strip()
+            if feed_url:
+                kwargs["feed_url"] = feed_url
+            kwargs["stream_key"] = f"{source_type}:{source_name}"
+        elif source_type == "github_trending":
+            kwargs["language"] = str(config.get("language") or "").strip()
+            kwargs["since"] = str(config.get("since") or "daily").strip() or "daily"
+            kwargs["spoken_language"] = str(config.get("spoken_language") or "").strip()
+            kwargs["stream_key"] = f"github_trending:{source_name}"
+        elif source_type == "reddit":
+            subreddit = str(
+                config.get("subreddit")
+                or (channels[0] if channels else "")
+                or source_name
+            ).strip()
+            kwargs["subreddit"] = subreddit
+            kwargs["sort"] = str(config.get("sort") or "hot").strip() or "hot"
+            kwargs["limit"] = int(config.get("limit") or 25)
+            kwargs["stream_key"] = f"reddit:{subreddit}"
+        return fetcher_factory(**kwargs)
+
+    def _build_local_cursor(self, item: Any) -> str | None:
+        published_at = None
+        if isinstance(getattr(item, "metadata", None), dict):
+            published_at = item.metadata.get("published_at")
+        payload = {
+            "external_id": getattr(item, "source_id", None),
+            "published_at": str(published_at) if published_at else None,
+            "fetched_at": _utcnow().isoformat(),
+        }
+        if not payload["external_id"] and not payload["published_at"]:
+            return None
+        return json.dumps(payload, ensure_ascii=True)
+
+    def _extract_source_account(self, metadata: Any) -> str | None:
+        if not isinstance(metadata, dict):
+            return None
+        for key in ("source_account", "author", "subreddit"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
 
     def _execute_scheduled_radar(
         self,

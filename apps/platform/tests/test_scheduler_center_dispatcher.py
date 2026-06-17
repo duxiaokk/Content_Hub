@@ -6,9 +6,12 @@ import uuid
 import httpx
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from scheduler_center.database import Base
 from scheduler_center.models import SchedulerAgent, SchedulerTask, SchedulerTaskAttempt, SchedulerTaskEvent
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 
 class _FakeResp:
@@ -21,11 +24,12 @@ class _FakeResp:
         return self._json_data
 
 
-def _make_session_local(db_path: str):
+def _make_session_local(_db_path: str):
     engine = create_engine(
-        f"sqlite:///{db_path.replace(os.sep, '/')}",
+        "sqlite://",
         connect_args={"check_same_thread": False},
         pool_pre_ping=True,
+        poolclass=StaticPool,
     )
     SessionLocal = sessionmaker(
         autocommit=False,
@@ -370,5 +374,112 @@ def test_dispatcher_choose_registered_agent_by_task_type(monkeypatch):
     assert task2 is not None
     assert task2.status == dispatcher_module.TaskStatus.SUCCEEDED
     assert task2.last_agent == "http://agent"
+    db.close()
+
+
+def test_dispatcher_executes_local_fetch_batch(monkeypatch):
+    import scheduler_center.dispatcher as dispatcher_module
+    from models import ContentItem, FetchRun, SourceConfig
+    from apps.platform.database import Base as PlatformBase
+
+    db_path = os.path.abspath(f"./.tmp_scheduler_dispatcher_test_{uuid.uuid4().hex}.db")
+    session_local = _make_session_local(db_path)
+    monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
+    PlatformBase.metadata.create_all(bind=session_local.kw["bind"])
+
+    class FakeFetcher:
+        async def fetch(self, request):  # noqa: ANN001
+            from apps.workflow_engine.registry.contracts import SourceItem
+
+            return [
+                SourceItem(
+                    source_type="reddit",
+                    source_id="t3_test_1",
+                    title="Test Reddit Post",
+                    source_url="https://example.com/r/test/1",
+                    raw_content="Fetched content",
+                    metadata={"subreddit": "python", "published_at": "2026-06-17T00:00:00+00:00"},
+                )
+            ]
+
+    def fake_get_fetcher(source_type: str):  # noqa: ANN001
+        assert source_type == "reddit"
+        return lambda **kwargs: FakeFetcher()
+
+    def fake_load_dependencies():
+        import models as platform_models
+        from crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
+        from apps.workflow_engine.registry.contracts import FetchRequest
+
+        return platform_models, create_content_item, get_content_item_by_source, update_content_item, fake_get_fetcher, FetchRequest
+
+    monkeypatch.setattr(dispatcher_module, "_load_platform_fetch_dependencies", fake_load_dependencies)
+
+    db = session_local()
+    source = SourceConfig(
+        name="Reddit Python",
+        source_type="reddit",
+        enabled=True,
+        channels='["r/python"]',
+        keywords='[]',
+        lookback_hours=24,
+        item_limit=20,
+        dedup_window_hours=24,
+        config_json='{"subreddit":"python","sort":"new"}',
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    task = SchedulerTask(
+        id=str(uuid.uuid4()),
+        idempotency_key=None,
+        trace_id="trace-fetch-batch-1",
+        task_type="content.fetch.batch",
+        payload_json='{"source_config_id": %d, "source_type": "reddit", "source_name": "Reddit Python", "channels": ["r/python"], "lookback_hours": 24, "limit": 5, "config": {"subreddit": "python", "sort": "new"}}' % source.id,
+        status=dispatcher_module.TaskStatus.RUNNING,
+        cancel_requested=0,
+        max_retries=0,
+        retry_delay_seconds=0.0,
+        attempt_count=0,
+        next_run_at=None,
+        last_agent=None,
+        result_json=None,
+        last_error=None,
+    )
+    db.add(task)
+    db.commit()
+
+    fetch_run = FetchRun(
+        source_config_id=source.id,
+        trigger_mode="manual",
+        status="pending",
+        task_id=task.id,
+        trace_id=task.trace_id,
+        requested_by="tester",
+        request_payload=task.payload_json,
+    )
+    db.add(fetch_run)
+    db.commit()
+    db.close()
+
+    dispatcher = dispatcher_module.SchedulerDispatcher()
+    dispatcher._execute_task(task.id)
+
+    db = session_local()
+    task_row = db.query(SchedulerTask).filter(SchedulerTask.id == task.id).first()
+    assert task_row is not None
+    assert task_row.status == dispatcher_module.TaskStatus.SUCCEEDED
+
+    fetch_run_row = db.query(FetchRun).filter(FetchRun.task_id == task.id).first()
+    assert fetch_run_row is not None
+    assert fetch_run_row.status == "success"
+    assert fetch_run_row.fetched_count == 1
+    assert fetch_run_row.inserted_count == 1
+
+    content_item = db.query(ContentItem).filter(ContentItem.source_type == "reddit").filter(ContentItem.source_id == "t3_test_1").first()
+    assert content_item is not None
+    assert content_item.fetch_run_id == fetch_run_row.id
+    assert content_item.pipeline_status == "fetched"
     db.close()
 

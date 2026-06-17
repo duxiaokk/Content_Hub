@@ -7,6 +7,11 @@ $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $appDir = Join-Path $projectRoot "apps\platform"
 $venvPython = Join-Path $appDir ".venv\Scripts\python.exe"
 
+$env:PYTHONPATH = $projectRoot
+if (-not $env:SECRET_KEY) {
+  $env:SECRET_KEY = "local-dev-secret-key"
+}
+
 Push-Location $appDir
 try {
   if (Test-Path $venvPython) {

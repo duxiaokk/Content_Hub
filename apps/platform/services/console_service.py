@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 
 import models
 from core.error_codes import ErrorCode
@@ -51,7 +52,10 @@ def ensure_platform_tables(db: Session) -> None:
 
 
 def list_sources(db: Session) -> list[dict[str, Any]]:
-    rows = db.query(models.SourceConfig).order_by(models.SourceConfig.updated_at.desc()).all()
+    try:
+        rows = db.query(models.SourceConfig).order_by(models.SourceConfig.updated_at.desc()).all()
+    except OperationalError:
+        return []
     return [serialize_source(row) for row in rows]
 
 
@@ -126,7 +130,7 @@ def trigger_fetch(
     }
     idempotency_key = f"console-fetch:{row.id}:{int(_utcnow().timestamp())}"
     submit = get_scheduler_client().submit_task(
-        task_type="ado_repost.run",
+        task_type="content.fetch.batch",
         payload=payload,
         idempotency_key=idempotency_key,
     )
@@ -160,14 +164,20 @@ def list_fetch_runs(
     source_config_id: int | None = None,
     status_value: str | None = None,
 ) -> list[dict[str, Any]]:
-    query = db.query(models.FetchRun, models.SourceConfig).join(
-        models.SourceConfig, models.FetchRun.source_config_id == models.SourceConfig.id
-    )
+    try:
+        query = db.query(models.FetchRun, models.SourceConfig).join(
+            models.SourceConfig, models.FetchRun.source_config_id == models.SourceConfig.id
+        )
+    except OperationalError:
+        return []
     if source_config_id is not None:
         query = query.filter(models.FetchRun.source_config_id == source_config_id)
     if status_value:
         query = query.filter(models.FetchRun.status == status_value)
-    rows = query.order_by(models.FetchRun.created_at.desc()).all()
+    try:
+        rows = query.order_by(models.FetchRun.created_at.desc()).all()
+    except OperationalError:
+        return []
     items: list[dict[str, Any]] = []
     for fetch_run, source in rows:
         item = serialize_fetch_run(fetch_run, source)
@@ -183,12 +193,18 @@ def list_content_items(
     review_status: str | None = None,
     publish_status: str | None = None,
 ) -> list[dict[str, Any]]:
-    query = db.query(models.ContentItem)
+    try:
+        query = db.query(models.ContentItem)
+    except OperationalError:
+        return []
     if review_status:
         query = query.filter(models.ContentItem.review_status == review_status)
     if publish_status:
         query = query.filter(models.ContentItem.publish_status == publish_status)
-    rows = query.order_by(models.ContentItem.created_at.desc()).all()
+    try:
+        rows = query.order_by(models.ContentItem.created_at.desc()).all()
+    except OperationalError:
+        return []
     return [serialize_content_item(row) for row in rows]
 
 

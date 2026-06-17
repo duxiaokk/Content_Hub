@@ -79,6 +79,21 @@ class AdoRepostRunRequest(BaseModel):
     idempotency_key: str | None = Field(default=None, max_length=128)
 
 
+class ContentFetchBatchRequest(BaseModel):
+    source_config_id: int = Field(ge=1)
+    source_type: str = Field(min_length=1, max_length=64)
+    source_name: str = Field(min_length=1, max_length=120)
+    channels: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    lookback_hours: int = Field(default=24, ge=1, le=720)
+    limit: int = Field(default=20, ge=1, le=200)
+    dedup_window_hours: int = Field(default=24, ge=1, le=720)
+    dry_run: bool = False
+    config: dict[str, Any] = Field(default_factory=dict)
+    trace_id: str | None = None
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
 class ContentWorkflowRunRequest(BaseModel):
     workflow_name: str = Field(default="content.workflow.run", min_length=1, max_length=128)
     source_name: str = Field(default="cnblogs", min_length=1, max_length=64)
@@ -130,6 +145,27 @@ def trigger_ado_repost_run(
         idempotency_key=body.idempotency_key,
     )
     return {"task_id": submit.get("id"), "trace_id": submit.get("trace_id") or trace_id}
+
+
+@router.post("/content-fetch/batch/run")
+def trigger_content_fetch_batch(
+    request: Request,
+    body: ContentFetchBatchRequest,
+):
+    _verify_internal_token(request)
+    trace_id = _new_trace_id(body.trace_id)
+    payload = body.model_dump(exclude={"trace_id", "idempotency_key"})
+    submit = _submit_scheduler_task(
+        task_type="content.fetch.batch",
+        payload=payload,
+        trace_id=trace_id,
+        idempotency_key=body.idempotency_key,
+    )
+    return {
+        "task_id": submit.get("id"),
+        "trace_id": submit.get("trace_id") or trace_id,
+        "task_type": "content.fetch.batch",
+    }
 
 
 @router.post("/content-pipeline/linear/run")

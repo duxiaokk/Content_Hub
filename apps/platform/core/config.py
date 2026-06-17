@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     db_host: str = "127.0.0.1"
     db_port: str = "3306"
     db_name: Optional[str] = None
-    secret_key: str
+    secret_key: Optional[str] = None
     jwt_algorithm: str = Field(
         default="HS256",
         validation_alias=AliasChoices("ALGORITHM", "JWT_ALGORITHM", "jwt_algorithm"),
@@ -173,7 +173,9 @@ def _load_fallback_settings() -> Settings:
 settings = Settings() if _HAS_PYDANTIC_SETTINGS else _load_fallback_settings()
 
 if not settings.secret_key:
-    if os.getenv("CONTENT_HUB_ENV", "development").strip().lower() in {"development", "dev", "local"}:
+    env_name = os.getenv("CONTENT_HUB_ENV", "production").strip().lower()
+    allow_insecure_dev_secret = _parse_bool(os.getenv("ALLOW_INSECURE_DEV_SECRET"), False)
+    if allow_insecure_dev_secret and env_name in {"development", "dev", "local"}:
         settings.secret_key = "local-dev-secret-key"
     else:
         raise RuntimeError("SECRET_KEY is required")

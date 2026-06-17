@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+pytest-cache-files-*/
 .ruff_cache/
 node_modules/
 dist/
@@ -21,6 +22,10 @@ apps/ado_repost/.venv/
 .tmp_*.db
 .tmp_*.db-shm
 .tmp_*.db-wal
+.tmp/
+*.db-journal
+*.log
+.playwright-cli/
 
 .env
 .env.local

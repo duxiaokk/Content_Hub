@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import logging
 import httpx
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
@@ -18,6 +19,7 @@ from database import check_db_health, get_db
 from scheduler_client import get_scheduler_client
 
 router = APIRouter(prefix="/admin", tags=["Admin API v1"])
+logger = logging.getLogger(__name__)
 
 
 def _scheduler_get(path: str, params: dict | None = None) -> dict:
@@ -30,6 +32,14 @@ def _scheduler_get(path: str, params: dict | None = None) -> dict:
     response.raise_for_status()
     payload = response.json()
     return payload if isinstance(payload, dict) else {"value": payload}
+
+
+def _scheduler_get_or_default(path: str, default: dict, params: dict | None = None) -> dict:
+    try:
+        return _scheduler_get(path, params)
+    except httpx.HTTPError as exc:
+        logger.warning("scheduler request failed path=%s error=%s", path, exc)
+        return default
 
 
 @router.get("/health", response_model=ApiResponse)
@@ -102,8 +112,9 @@ async def list_agents(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ):
-    payload = _scheduler_get(
+    payload = _scheduler_get_or_default(
         "/api/internal/scheduler/agents",
+        {"items": []},
         {"offset": (page - 1) * page_size, "limit": page_size},
     )
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
@@ -125,7 +136,7 @@ async def list_agents(
 
 @router.get("/agents/{agent_key}", response_model=ApiResponse)
 async def get_agent(agent_key: str, _user: RequireUser):
-    payload = _scheduler_get("/api/internal/scheduler/agents", {"limit": 200, "offset": 0})
+    payload = _scheduler_get_or_default("/api/internal/scheduler/agents", {"items": []}, {"limit": 200, "offset": 0})
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     for item in items:
         if str(item.get("agent_key")) == agent_key:
@@ -157,7 +168,7 @@ async def list_tasks(
         params["status"] = status
     if task_type:
         params["task_type"] = task_type
-    payload = _scheduler_get("/api/internal/scheduler/tasks", params)
+    payload = _scheduler_get_or_default("/api/internal/scheduler/tasks", {"items": [], "total": 0}, params)
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     mapped = [
         {
@@ -185,7 +196,7 @@ async def list_tasks(
 
 @router.get("/tasks/{task_id}", response_model=ApiResponse)
 async def get_task_detail(task_id: str, _user: RequireUser):
-    item = _scheduler_get(f"/api/internal/scheduler/tasks/{task_id}")
+    item = _scheduler_get_or_default(f"/api/internal/scheduler/tasks/{task_id}", {})
     return success({
         "task_id": item.get("id"),
         "trace_id": item.get("trace_id"),
@@ -211,7 +222,7 @@ async def list_orchestrations(
     params: dict[str, object] = {"offset": (page - 1) * page_size, "limit": page_size}
     if status:
         params["status"] = status
-    payload = _scheduler_get("/api/internal/orchestration/runs", params)
+    payload = _scheduler_get_or_default("/api/internal/orchestration/runs", {"items": [], "total": 0}, params)
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     mapped = [
         {
@@ -234,7 +245,7 @@ async def list_orchestrations(
 
 @router.get("/orchestrations/{run_id}", response_model=ApiResponse)
 async def get_orchestration_detail(run_id: str, _user: RequireUser):
-    item = _scheduler_get(f"/api/internal/orchestration/runs/{run_id}")
+    item = _scheduler_get_or_default(f"/api/internal/orchestration/runs/{run_id}", {})
     return success({
         "id": item.get("run_id"),
         "status": item.get("status"),

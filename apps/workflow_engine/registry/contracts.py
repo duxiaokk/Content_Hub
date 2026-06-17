@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 
-PipelineStage = Literal["fetch", "process", "publish"]
+PipelineStage = Literal["fetch", "filter", "process", "review_prepare", "publish", "digest_generate"]
 FallbackStrategy = Literal["skip", "raw", "retry"]
 
 
@@ -55,6 +55,36 @@ class ProcessResult:
 
 
 @dataclass(slots=True)
+class FilterResult:
+    items: list[ContentAsset]
+    filtered_out: list[dict[str, Any]]
+    stats: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class ReviewItem:
+    content_item_id: int
+    title: str
+    original_url: str
+    summary: str | None = None
+    rewritten_title: str | None = None
+    rewritten_content: str | None = None
+    score: float = 0.0
+    tags: list[str] = field(default_factory=list)
+    category: str | None = None
+    status: str = "pending"
+
+
+@dataclass(slots=True)
+class DigestResult:
+    digest_id: int
+    title: str
+    items_count: int
+    markdown_content: str
+    generated_at: str
+
+
+@dataclass(slots=True)
 class PublishTarget:
     target_name: str
     options: dict[str, Any] = field(default_factory=dict)
@@ -78,6 +108,8 @@ class AIProcessorConfig:
     timeout_seconds: int
     fallback_strategy: FallbackStrategy
     enable_cost_tracking: bool = True
+    default_rewrite_profile: str = "zh_tech_blog"
+    rewrite_score_threshold: float = 0.5
 
 
 class Fetcher(Protocol):

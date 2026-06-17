@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from workflow_engine.registry.contracts import Fetcher, Processor, Publisher
+from apps.workflow_engine.registry.contracts import Fetcher, Processor, Publisher
 
 
 @dataclass(slots=True)

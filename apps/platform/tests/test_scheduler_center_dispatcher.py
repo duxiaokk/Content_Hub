@@ -379,7 +379,7 @@ def test_dispatcher_choose_registered_agent_by_task_type(monkeypatch):
 
 def test_dispatcher_executes_local_fetch_batch(monkeypatch):
     import scheduler_center.dispatcher as dispatcher_module
-    from models import ContentItem, FetchRun, SourceConfig
+    from apps.platform.models import ContentItem, FetchRun, SourceConfig
     from apps.platform.database import Base as PlatformBase
     from apps.fetcher_engine.api.models import FetchBatchError, FetchBatchResult, FetchBatchStats
 
@@ -427,6 +427,14 @@ def test_dispatcher_executes_local_fetch_batch(monkeypatch):
                         "source_url": "https://example.com/r/test/1",
                     }
                 ],
+                matched_items=[
+                    {
+                        "source_type": "reddit",
+                        "source_id": "t3_test_1",
+                        "title": "Test Reddit Post",
+                        "source_url": "https://example.com/r/test/1",
+                    }
+                ],
                 errors=[],
                 stats=FetchBatchStats(
                     total_fetched=1,
@@ -438,9 +446,30 @@ def test_dispatcher_executes_local_fetch_batch(monkeypatch):
             )
 
     def fake_load_dependencies():
-        import models as platform_models
-        from crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
+        from apps.platform import models as platform_models
         from apps.fetcher_engine.api.models import FetchBatchRequest
+
+        def create_content_item(db, **kwargs):  # noqa: ANN001
+            item = platform_models.ContentItem(**kwargs)
+            db.add(item)
+            db.commit()
+            db.refresh(item)
+            return item
+
+        def get_content_item_by_source(db, source_type, source_id):  # noqa: ANN001
+            return (
+                db.query(platform_models.ContentItem)
+                .filter(platform_models.ContentItem.source_type == source_type)
+                .filter(platform_models.ContentItem.source_id == source_id)
+                .first()
+            )
+
+        def update_content_item(db, item, **kwargs):  # noqa: ANN001
+            for key, value in kwargs.items():
+                setattr(item, key, value)
+            db.commit()
+            db.refresh(item)
+            return item
 
         return (
             platform_models,
@@ -530,9 +559,163 @@ def test_dispatcher_executes_local_fetch_batch(monkeypatch):
     db.close()
 
 
+def test_dispatcher_attaches_fetch_run_id_to_deduped_existing_content(monkeypatch):
+    import scheduler_center.dispatcher as dispatcher_module
+    from apps.platform.models import ContentItem, FetchRun, SourceConfig
+    from apps.platform.database import Base as PlatformBase
+    from apps.fetcher_engine.api.models import FetchBatchResult, FetchBatchStats
+
+    db_path = os.path.abspath(f"./.tmp_scheduler_dispatcher_test_{uuid.uuid4().hex}.db")
+    session_local = _make_session_local(db_path)
+    monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
+    PlatformBase.metadata.create_all(bind=session_local.kw["bind"])
+
+    class FakeFetchService:
+        def __init__(self, db, source_repo):  # noqa: ANN001
+            self.db = db
+            self.source_repo = source_repo
+
+        async def run_sources(self, request):  # noqa: ANN001
+            return FetchBatchResult(
+                run_id=request.run_id,
+                items=[],
+                matched_items=[
+                    {
+                        "source_type": "reddit",
+                        "source_id": "t3_existing_1",
+                        "title": "Existing Reddit Post",
+                        "source_url": "https://example.com/r/test/existing",
+                    }
+                ],
+                errors=[],
+                stats=FetchBatchStats(
+                    total_fetched=1,
+                    total_inserted=0,
+                    total_deduped=1,
+                    sources_succeeded=1,
+                    sources_failed=0,
+                ),
+            )
+
+    def fake_load_dependencies():
+        from apps.platform import models as platform_models
+        from apps.fetcher_engine.api.models import FetchBatchRequest
+
+        def create_content_item(db, **kwargs):  # noqa: ANN001
+            item = platform_models.ContentItem(**kwargs)
+            db.add(item)
+            db.commit()
+            db.refresh(item)
+            return item
+
+        def get_content_item_by_source(db, source_type, source_id):  # noqa: ANN001
+            return (
+                db.query(platform_models.ContentItem)
+                .filter(platform_models.ContentItem.source_type == source_type)
+                .filter(platform_models.ContentItem.source_id == source_id)
+                .first()
+            )
+
+        def update_content_item(db, item, **kwargs):  # noqa: ANN001
+            for key, value in kwargs.items():
+                setattr(item, key, value)
+            db.commit()
+            db.refresh(item)
+            return item
+
+        return (
+            platform_models,
+            create_content_item,
+            get_content_item_by_source,
+            update_content_item,
+            FetchBatchRequest,
+            FakeFetchService,
+        )
+
+    monkeypatch.setattr(dispatcher_module, "_load_platform_fetch_dependencies", fake_load_dependencies)
+
+    db = session_local()
+    source = SourceConfig(
+        name="Reddit Python",
+        source_type="reddit",
+        enabled=True,
+        channels='["r/python"]',
+        keywords='[]',
+        lookback_hours=24,
+        item_limit=20,
+        dedup_window_hours=24,
+        config_json='{"subreddit":"python","sort":"new"}',
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    existing_item = ContentItem(
+        source_config_id=source.id,
+        fetch_run_id=None,
+        source_type="reddit",
+        source_id="t3_existing_1",
+        source_url="https://example.com/r/test/existing",
+        title="Existing Reddit Post",
+        language="zh",
+        raw_content="old",
+        tags_json="[]",
+        score=0,
+        publish_status="pending",
+        pipeline_status="fetched",
+        review_status="pending",
+        digest_included=False,
+    )
+    db.add(existing_item)
+    db.commit()
+
+    task = SchedulerTask(
+        id=str(uuid.uuid4()),
+        idempotency_key=None,
+        trace_id="trace-fetch-batch-dedup-1",
+        task_type="content.fetch.batch",
+        payload_json='{"source_config_id": %d, "source_type": "reddit", "lookback_hours": 24, "limit": 5, "config": {"subreddit": "python"}}' % source.id,
+        status=dispatcher_module.TaskStatus.RUNNING,
+        cancel_requested=0,
+        max_retries=0,
+        retry_delay_seconds=0.0,
+        attempt_count=0,
+        next_run_at=None,
+        last_agent=None,
+        result_json=None,
+        last_error=None,
+    )
+    db.add(task)
+    db.commit()
+
+    fetch_run = FetchRun(
+        source_config_id=source.id,
+        trigger_mode="manual",
+        status="pending",
+        task_id=task.id,
+        trace_id=task.trace_id,
+        requested_by="tester",
+        request_payload=task.payload_json,
+    )
+    db.add(fetch_run)
+    db.commit()
+    db.close()
+
+    dispatcher = dispatcher_module.SchedulerDispatcher()
+    dispatcher._execute_task(task.id)
+
+    db = session_local()
+    fetch_run_row = db.query(FetchRun).filter(FetchRun.task_id == task.id).first()
+    assert fetch_run_row is not None
+    updated_item = db.query(ContentItem).filter(ContentItem.source_id == "t3_existing_1").first()
+    assert updated_item is not None
+    assert updated_item.fetch_run_id == fetch_run_row.id
+    db.close()
+
+
 def test_dispatcher_marks_local_fetch_batch_failed_when_fetch_service_returns_errors(monkeypatch):
     import scheduler_center.dispatcher as dispatcher_module
-    from models import FetchRun, SourceConfig
+    from apps.platform.models import FetchRun, SourceConfig
     from apps.platform.database import Base as PlatformBase
     from apps.fetcher_engine.api.models import FetchBatchError, FetchBatchResult, FetchBatchStats
 
@@ -567,9 +750,30 @@ def test_dispatcher_marks_local_fetch_batch_failed_when_fetch_service_returns_er
             )
 
     def fake_load_dependencies():
-        import models as platform_models
-        from crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
+        from apps.platform import models as platform_models
         from apps.fetcher_engine.api.models import FetchBatchRequest
+
+        def create_content_item(db, **kwargs):  # noqa: ANN001
+            item = platform_models.ContentItem(**kwargs)
+            db.add(item)
+            db.commit()
+            db.refresh(item)
+            return item
+
+        def get_content_item_by_source(db, source_type, source_id):  # noqa: ANN001
+            return (
+                db.query(platform_models.ContentItem)
+                .filter(platform_models.ContentItem.source_type == source_type)
+                .filter(platform_models.ContentItem.source_id == source_id)
+                .first()
+            )
+
+        def update_content_item(db, item, **kwargs):  # noqa: ANN001
+            for key, value in kwargs.items():
+                setattr(item, key, value)
+            db.commit()
+            db.refresh(item)
+            return item
 
         return (
             platform_models,

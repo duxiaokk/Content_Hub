@@ -16,7 +16,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.exc import OperationalError
 
-from core.config import settings
+from apps.platform.core.config import settings
 
 logger = logging.getLogger(__name__)
 

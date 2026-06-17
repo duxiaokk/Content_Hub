@@ -22,6 +22,13 @@ select = ["F", "I"]
 
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
+testpaths = [
+    "apps/fetcher_engine/tests",
+    "apps/ai_processor/tests",
+    "apps/workflow_engine/tests",
+    "apps/publisher_engine/tests",
+    "apps/platform/tests",
+]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",

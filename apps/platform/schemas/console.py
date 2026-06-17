@@ -34,6 +34,13 @@ class TriggerFetchRequest(BaseModel):
     dry_run: bool = False
 
 
+class TriggerProcessFetchRunRequest(BaseModel):
+    limit: int = Field(default=20, ge=1, le=200)
+    source_type: str | None = Field(default=None, min_length=1, max_length=64)
+    filter_config: dict[str, Any] = Field(default_factory=dict)
+    process_options: dict[str, Any] = Field(default_factory=dict)
+
+
 class SourceConfigItem(BaseModel):
     id: int
     name: str
@@ -109,4 +116,3 @@ class PublishToPostRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     content: str | None = Field(default=None, min_length=1)
     tech_tags: str | None = Field(default=None, max_length=255)
-

@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from workflow_engine.pipeline.linear_pipeline import LinearPipelineRunner, LinearPipelineSpec
-from workflow_engine.registry.contracts import FetchRequest, ProcessContext, PublishTarget
-from workflow_engine.registry.plugin_registry import PluginRegistry
-from workflow_engine.runtime.observability import WorkflowRunTrace
+from apps.workflow_engine.pipeline.linear_pipeline import LinearPipelineRunner, LinearPipelineSpec
+from apps.workflow_engine.registry.contracts import FetchRequest, ProcessContext, PublishTarget
+from apps.workflow_engine.registry.plugin_registry import PluginRegistry
+from apps.workflow_engine.runtime.observability import WorkflowRunTrace
 
 
 @dataclass(slots=True)

@@ -18,6 +18,5 @@ def test_build_default_registry_registers_components() -> None:
     assert "bilibili" in registry.fetchers
     assert "github_trending" in registry.fetchers
     assert "reddit" in registry.fetchers
-    assert "rss" in registry.fetchers
     assert "rewrite" in registry.processors
     assert "blog" in registry.publishers

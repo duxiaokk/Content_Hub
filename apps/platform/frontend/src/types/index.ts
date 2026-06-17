@@ -1,4 +1,3 @@
-// ============ 用户 ============
 export interface User {
   id: number;
   username: string;
@@ -9,7 +8,6 @@ export interface User {
   updated_at: string;
 }
 
-// ============ 文章 ============
 export interface Post {
   id: number;
   title: string;
@@ -27,7 +25,6 @@ export interface Post {
   updated_at: string;
 }
 
-// ============ 评论 ============
 export interface Comment {
   id: number;
   post_id: number;
@@ -37,7 +34,6 @@ export interface Comment {
   created_at: string;
 }
 
-// ============ Agent ============
 export type AgentStatus = 'online' | 'offline' | 'busy';
 
 export interface Agent {
@@ -51,7 +47,6 @@ export interface Agent {
   last_heartbeat: string;
 }
 
-// ============ 调度任务 ============
 export type TaskStatus = 'pending' | 'running' | 'success' | 'failure' | 'retrying';
 
 export interface SchedulerTask {
@@ -68,7 +63,6 @@ export interface SchedulerTask {
   updated_at: string;
 }
 
-// ============ 编排运行 ============
 export interface OrchestrationRun {
   id: string;
   status: string;
@@ -88,12 +82,25 @@ export interface SourceConfig {
   lookback_hours: number;
   item_limit: number;
   dedup_window_hours: number;
-  // 前端表单会把 config 当作“任意 JSON 对象”编辑；用 any 避免与 antd Form 的递归 Partial 类型冲突
   config: Record<string, any>;
   last_cursor?: Record<string, unknown> | string | null;
   last_run_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+export interface SourceSubscription {
+  id: number;
+  source_type: string;
+  source_name: string;
+  account_identifier?: string;
+  feed_url?: string;
+  enabled: boolean;
+  category?: string;
+  default_tags?: string;
+  last_cursor?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface FetchRun {
@@ -128,6 +135,12 @@ export interface ContentItem {
   title: string;
   raw_content?: string | null;
   processed_content?: string | null;
+  summary?: string | null;
+  rewritten_title?: string | null;
+  rewritten_content?: string | null;
+  score?: number | null;
+  tags?: string[];
+  category?: string | null;
   pipeline_status: string;
   review_status: string;
   publish_status: string;
@@ -139,7 +152,37 @@ export interface ContentItem {
   updated_at?: string | null;
 }
 
-// ============ 分页响应 ============
+export type ReviewStatus = 'pending' | 'approved' | 'rejected' | 'archived';
+
+export interface ReviewItem {
+  id: number;
+  content_item_id: number;
+  candidate_title?: string;
+  candidate_content?: string;
+  original_title: string;
+  original_content: string;
+  summary?: string;
+  source_url?: string;
+  score: number;
+  tags: string[];
+  category?: string;
+  status: ReviewStatus;
+  reviewer?: string;
+  review_note?: string;
+  reviewed_at?: string;
+  created_at?: string;
+}
+
+export interface DigestReport {
+  id: number;
+  title: string;
+  content_markdown: string;
+  included_count: number;
+  generated_at: string;
+  run_id?: string;
+  created_at?: string;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
@@ -147,7 +190,6 @@ export interface PaginatedResponse<T> {
   page_size: number;
 }
 
-// ============ API 请求/响应 ============
 export interface LoginRequest {
   username: string;
   password: string;
@@ -185,7 +227,6 @@ export interface SourceConfigPayload {
   lookback_hours: number;
   item_limit: number;
   dedup_window_hours: number;
-  // 同上：config 允许任意 JSON，避免 TS2345/TS2322（unknown 无法赋值给 {}）
   config: Record<string, any>;
 }
 
@@ -193,6 +234,22 @@ export interface TriggerFetchPayload {
   lookback_hours?: number;
   item_limit?: number;
   dry_run?: boolean;
+}
+
+export interface SourceSubscriptionPayload {
+  source_type: string;
+  source_name: string;
+  account_identifier?: string;
+  feed_url?: string;
+  schedule_expression?: string;
+  category?: string;
+  default_tags?: string;
+}
+
+export interface ReviewApprovePayload {
+  reviewer?: string;
+  edited_title?: string;
+  edited_content?: string;
 }
 
 export interface ApiResponse<T> {

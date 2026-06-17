@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
+import models
 from core.api_schemas import ApiResponse, paginated, success
 from core.permissions import RequireUser
 from database import get_db
@@ -14,6 +15,7 @@ from schemas.console import (
     SourceConfigCreateRequest,
     SourceConfigUpdateRequest,
     TriggerFetchRequest,
+    TriggerProcessFetchRunRequest,
 )
 from services.console_service import (
     approve_content_item,
@@ -26,6 +28,7 @@ from services.console_service import (
     publish_content_to_post,
     reject_content_item,
     trigger_fetch,
+    trigger_process_fetch_run,
     update_source,
 )
 
@@ -85,6 +88,19 @@ async def console_list_fetch_runs(
     start = (page - 1) * page_size
     end = start + page_size
     return paginated(items[start:end], total, page, page_size)
+
+
+@router.post("/fetch-runs/{fetch_run_id}/process", response_model=ApiResponse)
+async def console_process_fetch_run(
+    fetch_run_id: int,
+    body: TriggerProcessFetchRunRequest,
+    user: RequireUser,
+    db: Session = Depends(get_db),
+):
+    fetch_run = db.query(models.FetchRun).filter(models.FetchRun.id == fetch_run_id).first()
+    if fetch_run is None:
+        raise HTTPException(status_code=404, detail="fetch run not found")
+    return success(trigger_process_fetch_run(db, fetch_run, body, user), "处理任务已提交")
 
 
 @router.get("/content-items", response_model=ApiResponse)

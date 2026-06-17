@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
 
-from workflow_engine.runtime.db import Base
+from apps.workflow_engine.runtime.db import Base
 
 
 class ContentItem(Base):

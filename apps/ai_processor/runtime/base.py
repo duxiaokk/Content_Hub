@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from workflow_engine.registry.contracts import (
+from apps.workflow_engine.registry.contracts import (
     AIProcessorConfig,
     ContentAsset,
     ProcessContext,

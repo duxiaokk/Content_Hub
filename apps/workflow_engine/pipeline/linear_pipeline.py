@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from workflow_engine.registry.contracts import ContentAsset, FetchRequest, ProcessContext, PublishTarget
-from workflow_engine.registry.plugin_registry import PluginRegistry
-from workflow_engine.runtime.content_repository import ContentRepository
-from workflow_engine.runtime.observability import WorkflowRunTrace
+from apps.workflow_engine.registry.contracts import ContentAsset, FetchRequest, ProcessContext, PublishTarget
+from apps.workflow_engine.registry.plugin_registry import PluginRegistry
+from apps.workflow_engine.runtime.content_repository import ContentRepository
+from apps.workflow_engine.runtime.observability import WorkflowRunTrace
 
 
 @dataclass(slots=True)

@@ -60,6 +60,7 @@ def build_radar_pipeline_payload(body: "RadarPipelineRunRequest") -> dict[str, A
         "workflow_name": "radar_pipeline",
         "limit": body.limit,
         "source_type": body.source_type,
+        "fetch_run_id": body.fetch_run_id,
         "filter_config": body.filter_config,
         "process_options": body.process_options,
         "trigger_type": "manual",
@@ -112,6 +113,7 @@ class ContentWorkflowRunRequest(BaseModel):
 class RadarPipelineRunRequest(BaseModel):
     limit: int = Field(default=20, ge=1, le=200)
     source_type: str | None = None
+    fetch_run_id: int | None = Field(default=None, ge=1)
     filter_config: dict[str, Any] = Field(default_factory=dict)
     process_options: dict[str, Any] = Field(default_factory=dict)
     trace_id: str | None = None

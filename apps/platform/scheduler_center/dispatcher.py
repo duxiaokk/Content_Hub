@@ -1015,6 +1015,7 @@ class SchedulerDispatcher:
             )
         )
         serialized_items = list(result.items)
+        matched_items = list(result.matched_items)
 
         fetch_run = (
             db.query(platform_models.FetchRun)
@@ -1031,7 +1032,7 @@ class SchedulerDispatcher:
             fetch_run.finished_at = _utcnow()
             fetch_run.error_message = result.errors[0].error if result.errors else None
             db.add(fetch_run)
-            for item in serialized_items:
+            for item in matched_items:
                 content_item = get_content_item_by_source(db, item["source_type"], item["source_id"])
                 if content_item is not None:
                     content_item.fetch_run_id = fetch_run.id
@@ -1044,6 +1045,7 @@ class SchedulerDispatcher:
         return {
             "run_id": task.id,
             "items": serialized_items,
+            "matched_items": matched_items,
             "fetched_count": int(result.stats.total_fetched),
             "inserted_count": int(result.stats.total_inserted),
             "deduped_count": int(result.stats.total_deduped),

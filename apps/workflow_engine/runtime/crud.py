@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from workflow_engine.runtime.models import ContentItem
+from apps.workflow_engine.runtime.models import ContentItem
 
 
 def get_content_item_by_source(db: Session, source_type: str, source_id: str) -> ContentItem | None:
@@ -23,6 +23,7 @@ def list_content_items(
     publish_status: str | None = None,
     pipeline_status: str | None = None,
     source_type: str | None = None,
+    fetch_run_id: int | None = None,
     limit: int = 100,
 ) -> list[ContentItem]:
     query = db.query(ContentItem)
@@ -34,6 +35,8 @@ def list_content_items(
         query = query.filter(ContentItem.pipeline_status == pipeline_status)
     if source_type:
         query = query.filter(ContentItem.source_type == source_type)
+    if fetch_run_id is not None:
+        query = query.filter(ContentItem.fetch_run_id == fetch_run_id)
     return query.order_by(ContentItem.created_at.desc()).limit(limit).all()
 
 

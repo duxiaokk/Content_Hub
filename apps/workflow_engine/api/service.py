@@ -41,6 +41,8 @@ class WorkflowEngineService:
         db: Session = SessionLocal()
         try:
             source_type = request.get("source_type")
+            fetch_run_id_value = request.get("fetch_run_id")
+            fetch_run_id = int(fetch_run_id_value) if fetch_run_id_value is not None else None
             stop_on_error = bool(request.get("stop_on_error", False))
             run_id = str(request.get("run_id") or str(uuid.uuid4()))
             trace = WorkflowRunTrace(run_id=run_id, workflow_name="radar_pipeline")
@@ -69,10 +71,18 @@ class WorkflowEngineService:
                 db.commit()
 
             trace.log_step_start("fetch", items_in=0)
-            items = db.query(ContentItem).filter(ContentItem.pipeline_status == "fetched")
-            if source_type:
-                items = items.filter(ContentItem.source_type == source_type)
-            rows = list(items.order_by(ContentItem.id.asc()).limit(int(request.get("limit", 20))).all())
+            rows = [
+                db.query(ContentItem).filter(ContentItem.id == int(item["id"])).first()
+                for item in self._repository.list_items(
+                    ContentQuery(
+                        pipeline_status="fetched",
+                        source_type=str(source_type) if source_type else None,
+                        fetch_run_id=fetch_run_id,
+                        limit=int(request.get("limit", 20)),
+                    )
+                )
+            ]
+            rows = [row for row in rows if row is not None]
             trace.log_step_end("fetch", status="success", items_out=len(rows))
 
             assets = [
@@ -243,6 +253,7 @@ class WorkflowEngineService:
         publish_status: str | None = None,
         pipeline_status: str | None = None,
         source_type: str | None = None,
+        fetch_run_id: int | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         return self._repository.list_items(
@@ -251,6 +262,7 @@ class WorkflowEngineService:
                 publish_status=publish_status,
                 pipeline_status=pipeline_status,
                 source_type=source_type,
+                fetch_run_id=fetch_run_id,
                 limit=limit,
             )
         )

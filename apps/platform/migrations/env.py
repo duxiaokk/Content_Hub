@@ -21,8 +21,11 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 PLATFORM_DIR = Path(__file__).resolve().parents[1]
-if str(PLATFORM_DIR) not in sys.path:
-    sys.path.insert(0, str(PLATFORM_DIR))
+REPO_ROOT = Path(__file__).resolve().parents[3]
+for path in (REPO_ROOT, PLATFORM_DIR):
+    path_str = str(path)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
 
 import models  # noqa: F401,E402
 from core.config import settings  # noqa: E402

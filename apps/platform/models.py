@@ -24,9 +24,9 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text
 
-from database import Base
+from apps.platform.database import Base
 
 
 class Post(Base):
@@ -313,6 +313,34 @@ class PublishRecord(Base):
 
     __table_args__ = (
         Index("ix_publish_records_target_status_created", "target_type", "status", "created_at"),
+        Index("uq_publish_records_run_content_target", "run_id", "content_item_id", "target_type", unique=True),
+    )
+
+
+class WorkflowRun(Base):
+    __tablename__ = "workflow_run"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workflow_name = Column(String(64), nullable=False, index=True, comment="Workflow name.")
+    trigger_type = Column(String(32), nullable=False, default="manual", index=True, comment="Run trigger type.")
+    status = Column(String(32), nullable=False, default="running", index=True, comment="Run status.")
+    started_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    finished_at = Column(DateTime, nullable=True, index=True)
+    items_total = Column(Integer, nullable=False, default=0, comment="Total input items.")
+    items_succeeded = Column(Integer, nullable=False, default=0, comment="Successfully processed items.")
+    items_failed = Column(Integer, nullable=False, default=0, comment="Failed items.")
+    error_summary = Column(Text, nullable=True, comment="Run error summary.")
+    trace_payload = Column(JSON, nullable=True, comment="Structured workflow trace payload.")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    __table_args__ = (
+        Index("ix_workflow_run_name_status_created", "workflow_name", "status", "created_at"),
     )
 
 

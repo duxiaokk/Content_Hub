@@ -11,6 +11,8 @@ import AgentConsolePage from './pages/AgentConsole/AgentConsolePage';
 import SourcesPage from './pages/Sources/SourcesPage';
 import FetchRunsPage from './pages/FetchRuns/FetchRunsPage';
 import ContentQueuePage from './pages/ContentQueue/ContentQueuePage';
+import ReviewQueuePage from './pages/ReviewQueue/ReviewQueuePage';
+import DigestPage from './pages/Digests/DigestPage';
 
 export default function App() {
   const token = useAuthStore((s) => s.token);
@@ -39,6 +41,8 @@ export default function App() {
         <Route path="/sources" element={<SourcesPage />} />
         <Route path="/fetch-runs" element={<FetchRunsPage />} />
         <Route path="/content-queue" element={<ContentQueuePage />} />
+        <Route path="/review-queue" element={<ReviewQueuePage />} />
+        <Route path="/digests" element={<DigestPage />} />
         <Route path="/post/:id" element={<PostDetailPage />} />
         <Route path="/create" element={<PostCreatePage />} />
         <Route path="/agent" element={<AgentConsolePage />} />

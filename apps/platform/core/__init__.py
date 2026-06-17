@@ -9,7 +9,7 @@
 主要成员：
 - settings: 从 core.config 导入的配置实例，供全项目使用
 """
-from core.config import settings as settings
+from apps.platform.core.config import settings as settings
 
 __all__ = [
     'settings',

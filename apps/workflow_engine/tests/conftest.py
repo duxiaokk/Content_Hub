@@ -4,7 +4,10 @@ import sys
 from pathlib import Path
 
 
-APPS_ROOT = Path(__file__).resolve().parents[2]
-apps_root_str = str(APPS_ROOT)
-if apps_root_str not in sys.path:
-    sys.path.insert(0, apps_root_str)
+REPO_ROOT = Path(__file__).resolve().parents[3]
+APPS_ROOT = REPO_ROOT / "apps"
+
+for path in (REPO_ROOT, APPS_ROOT):
+    path_str = str(path)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)

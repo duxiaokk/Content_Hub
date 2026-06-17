@@ -6,7 +6,7 @@ from typing import AsyncIterable
 
 import httpx
 
-from ai_processor.runtime.settings import LLMSettings
+from apps.ai_processor.runtime.settings import LLMSettings
 
 
 class LLMProvider(abc.ABC):

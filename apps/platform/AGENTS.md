@@ -1,40 +1,45 @@
-# Ado_Jk Multi-Agent Orchestration Platform - AI Agent Guidelines
+# Content Hub Platform - 子模块补充规则
 
-## Architecture Overview
-Multi-Agent task orchestration platform built with FastAPI, SQLAlchemy ORM, Jinja2 templates, and custom authentication. SQLite default (blog.db), MySQL optional via env vars. No external auth deps - custom PBKDF2 password hashing and HMAC-signed tokens. Includes Scheduler Center for distributed task orchestration, Agent Registry for agent discovery, and Shared Memory Pool for cross-service data sharing.
+## 1. 继承关系
+- 本目录及其子目录首先继承仓库根目录 `D:\Python\content_hub\AGENTS.md`
+- 本文件只补充 `apps/platform` 的特定约束
+- 若与根规则冲突，以根规则为准
 
-## Key Components
-- `main.py`: Core routes, post CRUD, like system (JSON file)
-- `models.py`: Post/User SQLAlchemy models with UTC timestamps
-- `database.py`: Engine setup with MySQL/SQLite fallback
-- `security.py`: Custom JWT-like token auth (cookies), PBKDF2 hashing
-- `routers/auth.py`: Login/register/logout with form+JSON support
-- `templates/`: Jinja2 HTML with Chinese UI
-- `static/`: CSS/JS/images, mounted at /static and /static/images
+## 2. 模块定位
+- `apps/platform` 是平台层与控制台相关模块
+- 典型范围包括：
+  - API
+  - 数据模型
+  - Alembic 迁移
+  - 前端模板
+  - 调度中心接入
 
-## Critical Workflows
-- **Run app**: `uvicorn main:app --reload --host 127.0.0.1 --port 8010`
-- **DB migrations**: Manual scripts like `add_created_at_column.py` (run with python path/to/script.py)
-- **Test auth flow**: Use `tmp_verify.py` for end-to-end verification
-- **Static files**: Place images in `image/` for /static/images/ access
+## 3. 平台层实现约束
 
-## Project Conventions
-- **Auth**: Cookie-based tokens, redirect to /login on 401
-- **Content handling**: Support both JSON and form-encoded requests (parse_qs fallback)
-- **Timestamps**: UTC datetime defaults, display as local time in templates
-- **Ratings**: 1-5 star system, nullable integer
-- **Search**: Title-only contains filter
-- **Likes**: File-based counter in `like_count.json`, no DB persistence
+### 数据库
+- 默认数据库可能是 SQLite，本地环境已知会出现 `disk I/O error`
+- 涉及迁移或数据库验收时，优先说明备份要求
+- 若默认库不可用，可使用干净临时 SQLite 库完成 Alembic 验证
+- 迁移链必须保持单 head
 
-## Integration Patterns
-- **Database**: `get_db()` dependency for session management
-- **User context**: `Depends(security.get_current_user_from_cookie)` for auth-required routes
-- **Templates**: `templates.TemplateResponse(request, "template.html", context)`
-- **Redirects**: `RedirectResponse(url, status_code=303)` for POST redirects
-- **Error handling**: HTTPException with Chinese messages
+### API
+- 使用 FastAPI 风格
+- 优先复用现有依赖注入、schema、响应结构
+- 鉴权、会话、cookie 相关逻辑保持与现有实现一致
 
-## Development Notes
-- No tests directory - manual verification via tmp_verify.py
-- Dependencies minimal: fastapi, uvicorn, sqlalchemy, jinja2, pymysql
-- Chinese comments/templates - maintain language consistency
-- Environment config: SECRET_KEY, DB_*, ACCESS_TOKEN_EXPIRE_MINUTES
+### 模板与前端
+- 保持当前页面结构和命名风格
+- 中文界面文案保持一致
+- 不因为单个任务重写整页模板或样式体系
+
+## 4. 验证重点
+- 若任务涉及迁移，至少验证：
+  - `alembic upgrade head`
+  - `alembic current`
+  - 必要时 `alembic downgrade -1`
+- 若任务涉及 API 或页面，优先补最小必要测试或验收步骤
+
+## 5. Git 提交
+- 平台目录下任务完成后，仍遵循根目录 `AGENTS.md` 的自动提交规则
+- 只提交当前平台任务相关文件
+

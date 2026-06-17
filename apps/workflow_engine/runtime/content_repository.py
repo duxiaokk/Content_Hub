@@ -3,14 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from workflow_engine.registry.contracts import ContentAsset, PublishResult, SourceItem
-from workflow_engine.runtime.crud import (
+from apps.workflow_engine.registry.contracts import ContentAsset, PublishResult, SourceItem
+from apps.workflow_engine.runtime.crud import (
     create_content_item,
     get_content_item_by_source,
     list_content_items,
     update_content_item,
 )
-from workflow_engine.runtime.db import SessionLocal
+from apps.workflow_engine.runtime.db import SessionLocal
 
 
 @dataclass(slots=True)
@@ -19,6 +19,7 @@ class ContentQuery:
     publish_status: str | None = None
     pipeline_status: str | None = None
     source_type: str | None = None
+    fetch_run_id: int | None = None
     limit: int = 100
 
 
@@ -135,6 +136,7 @@ class ContentRepository:
                 publish_status=criteria.publish_status,
                 pipeline_status=criteria.pipeline_status,
                 source_type=criteria.source_type,
+                fetch_run_id=criteria.fetch_run_id,
                 limit=criteria.limit,
             )
             return [self.serialize(row) for row in rows]

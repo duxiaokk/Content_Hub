@@ -27,7 +27,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.observability import init_observability
-from routers import ai, agent, comments, demo, internal_tasks, pages, posts
+from routers import ai, agent, comments, demo, digests, internal_tasks, pages, posts, reviews, sources
 from routers.api_v1 import api_v1
 from database import Base, check_db_health, engine
 from web_deps import get_or_set_csrf_cookie
@@ -98,6 +98,9 @@ app.include_router(ai.router)
 app.include_router(agent.router)
 app.include_router(internal_tasks.router)
 app.include_router(demo.router)
+app.include_router(sources.router)
+app.include_router(reviews.router)
+app.include_router(digests.router)
 
 # API v1 标准化路由
 app.include_router(api_v1)

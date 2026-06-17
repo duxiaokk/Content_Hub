@@ -7,6 +7,7 @@ import type {
   ContentItem,
   CreateCommentRequest,
   CreatePostRequest,
+  DigestReport,
   FetchRun,
   LoginRequest,
   LoginResponse,
@@ -14,9 +15,13 @@ import type {
   PaginatedResponse,
   Post,
   RegisterRequest,
+  ReviewApprovePayload,
+  ReviewItem,
   SchedulerTask,
   SourceConfig,
   SourceConfigPayload,
+  SourceSubscription,
+  SourceSubscriptionPayload,
   TriggerFetchPayload,
   User,
 } from '../types';
@@ -27,6 +32,13 @@ const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+const internalApiClient = axios.create({
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+const internalApiToken = import.meta.env.VITE_INTERNAL_API_TOKEN;
+
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = useAuthStore.getState().token;
   if (token !== null) {
@@ -35,10 +47,24 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
-/** 请求是否是登录/注册（不触发 401 自动跳转） */
+internalApiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  if (internalApiToken) {
+    config.headers['x-internal-token'] = internalApiToken;
+  }
+  return config;
+});
+
 function _isAuthUrl(url: string | undefined): boolean {
   if (!url) return false;
   return url.endsWith('/auth/login') || url.endsWith('/auth/register');
+}
+
+function _extractErrorMessage(err: AxiosError): string {
+  const detail = err.response?.data;
+  if (detail && typeof detail === 'object' && 'detail' in detail && typeof detail.detail === 'string') {
+    return detail.detail;
+  }
+  return err instanceof Error ? err.message : 'Request failed';
 }
 
 apiClient.interceptors.response.use(
@@ -55,7 +81,7 @@ apiClient.interceptors.response.use(
         useAuthStore.getState().logout();
         window.location.href = '/console/login';
       }
-      return Promise.reject(new Error(body.message || '请求失败'));
+      return Promise.reject(new Error(body.message || 'Request failed'));
     }
     return res;
   },
@@ -64,9 +90,19 @@ apiClient.interceptors.response.use(
       useAuthStore.getState().logout();
       window.location.href = '/console/login';
     }
-    const message = err instanceof Error ? err.message : '网络请求失败';
-    return Promise.reject(new Error(message));
+    return Promise.reject(new Error(_extractErrorMessage(err)));
   }
+);
+
+internalApiClient.interceptors.response.use(
+  (res) => {
+    const body = res.data as ApiResponse<unknown>;
+    if (body && typeof body === 'object' && 'code' in body && body.code !== 0) {
+      return Promise.reject(new Error(body.message || 'Request failed'));
+    }
+    return res;
+  },
+  (err: AxiosError) => Promise.reject(new Error(_extractErrorMessage(err)))
 );
 
 export async function login(data: LoginRequest): Promise<LoginResponse> {
@@ -269,6 +305,108 @@ export async function publishConsoleContentItem(
     data || {}
   );
   return res.data.data;
+}
+
+export async function getSources(): Promise<SourceSubscription[]> {
+  const res = await internalApiClient.get<ApiResponse<SourceSubscription[]>>('/api/internal/content/sources/');
+  return res.data.data;
+}
+
+export async function createSource(data: SourceSubscriptionPayload): Promise<SourceSubscription> {
+  const res = await internalApiClient.post<ApiResponse<SourceSubscription>>('/api/internal/content/sources/', data);
+  return res.data.data;
+}
+
+export async function updateSource(id: number, data: Partial<SourceSubscriptionPayload>): Promise<SourceSubscription> {
+  const res = await internalApiClient.patch<ApiResponse<SourceSubscription>>(`/api/internal/content/sources/${id}`, data);
+  return res.data.data;
+}
+
+export async function toggleSource(id: number, enabled: boolean): Promise<void> {
+  await internalApiClient.post(`/api/internal/content/sources/${id}/${enabled ? 'enable' : 'disable'}`);
+}
+
+export async function triggerFetch(sourceId: number): Promise<void> {
+  if (!internalApiToken) {
+    throw new Error('VITE_INTERNAL_API_TOKEN is not configured');
+  }
+  await internalApiClient.post('/api/internal/tasks/content-pipeline/radar/run', {
+    limit: 20,
+    filter_config: { source_subscription_ids: [sourceId] },
+  });
+}
+
+export async function getReviews(
+  params?: Record<string, unknown>
+): Promise<PaginatedResponse<ReviewItem>> {
+  const res = await internalApiClient.get<ApiResponse<PaginatedResponse<ReviewItem>>>('/api/internal/content/reviews/', {
+    params,
+  });
+  return res.data.data;
+}
+
+export async function getReview(id: number): Promise<ReviewItem> {
+  const res = await internalApiClient.get<ApiResponse<ReviewItem>>(`/api/internal/content/reviews/${id}`);
+  return res.data.data;
+}
+
+export async function approveReview(id: number, data?: ReviewApprovePayload): Promise<void> {
+  await internalApiClient.post(`/api/internal/content/reviews/${id}/approve`, {
+    reviewer: data?.reviewer || 'admin',
+    edited_title: data?.edited_title,
+    edited_content: data?.edited_content,
+  });
+}
+
+export async function rejectReview(id: number, note?: string): Promise<void> {
+  await internalApiClient.post(`/api/internal/content/reviews/${id}/reject`, {
+    reviewer: 'admin',
+    note: note || '',
+  });
+}
+
+export async function archiveReview(id: number): Promise<void> {
+  await internalApiClient.post(`/api/internal/content/reviews/${id}/archive`, null, {
+    params: { reviewer: 'admin' },
+  });
+}
+
+export async function getDigests(
+  page: number = 1,
+  pageSize: number = 20
+): Promise<PaginatedResponse<DigestReport>> {
+  const res = await internalApiClient.get<ApiResponse<PaginatedResponse<DigestReport>>>('/api/internal/content/digests/', {
+    params: { page, page_size: pageSize },
+  });
+  return res.data.data;
+}
+
+export async function getDigest(id: number): Promise<DigestReport> {
+  const res = await internalApiClient.get<ApiResponse<DigestReport>>(`/api/internal/content/digests/${id}`);
+  return res.data.data;
+}
+
+export async function generateDigest(): Promise<DigestReport> {
+  const res = await internalApiClient.post<ApiResponse<DigestReport>>('/api/internal/content/digests/generate', {
+    lookback_hours: 24,
+  });
+  return res.data.data;
+}
+
+export async function triggerDailyDigest(): Promise<void> {
+  if (!internalApiToken) {
+    throw new Error('VITE_INTERNAL_API_TOKEN is not configured');
+  }
+  await internalApiClient.post('/api/internal/tasks/content-pipeline/daily-digest/run', {
+    lookback_hours: 24,
+  });
+}
+
+export async function downloadDigest(id: number): Promise<Blob> {
+  const res = await internalApiClient.get(`/api/internal/content/digests/${id}/download`, {
+    responseType: 'blob',
+  });
+  return res.data as Blob;
 }
 
 export default apiClient;

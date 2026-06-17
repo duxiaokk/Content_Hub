@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
+import logging
 import traceback
+from datetime import datetime, timezone
+from time import perf_counter
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -10,23 +14,30 @@ from apps.fetcher_engine.api.registry import get_fetcher
 from apps.workflow_engine.registry.contracts import FetchRequest, SourceItem
 
 
+logger = logging.getLogger(__name__)
+
+
 class FetchService:
     def __init__(self, db_session: Session, source_repo: Any) -> None:
         self.db_session = db_session
         self.source_repo = source_repo
 
     async def run_sources(self, request: FetchBatchRequest) -> FetchBatchResult:
-        subscriptions = self._load_subscriptions(request.sources)
+        subscriptions = self._load_subscriptions(request.sources, request.subscription_ids)
         result_items: list[dict[str, Any]] = []
+        matched_items: list[dict[str, Any]] = []
         result_errors: list[FetchBatchError] = []
         seen_keys: set[tuple[str, str]] = set()
         total_fetched = 0
         total_inserted = 0
         total_deduped = 0
+        sources_succeeded = 0
+        sources_failed = 0
 
         for subscription in subscriptions:
             source_type = subscription.source_type
             fetcher_factory = get_fetcher(source_type)
+            started_at = perf_counter()
             if fetcher_factory is None:
                 result_errors.append(
                     FetchBatchError(
@@ -35,6 +46,7 @@ class FetchService:
                         traceback=None,
                     )
                 )
+                sources_failed += 1
                 continue
 
             try:
@@ -49,21 +61,41 @@ class FetchService:
                     )
                 )
             except Exception as exc:
+                sources_failed += 1
+                error_traceback = traceback.format_exc()
                 result_errors.append(
                     FetchBatchError(
                         source=source_type,
                         error=str(exc),
-                        traceback=traceback.format_exc(),
+                        traceback=error_traceback,
                     )
+                )
+                logger.exception(
+                    "Fetch source failed",
+                    extra={
+                        "run_id": request.run_id,
+                        "source_type": source_type,
+                        "elapsed_ms": round((perf_counter() - started_at) * 1000, 2),
+                    },
                 )
                 continue
 
-            total_fetched += len(source_items)
-            self._update_cursor(subscription, source_items)
-            unique_items, deduped_count = self._dedupe_source_items(source_items, seen_keys)
+            incremental_items = self._filter_incremental_items(source_items, subscription.last_cursor)
+            total_fetched += len(incremental_items)
+            self._update_cursor(subscription, incremental_items)
+            unique_items, deduped_count = self._dedupe_source_items(incremental_items, seen_keys)
             total_deduped += deduped_count
+            sources_succeeded += 1
 
             for item in unique_items:
+                matched_items.append(
+                    {
+                        "source_type": item.source_type,
+                        "source_id": item.source_id,
+                        "source_url": item.source_url,
+                        "title": item.title,
+                    }
+                )
                 if self._content_exists(item.source_type, item.source_id):
                     total_deduped += 1
                     continue
@@ -84,21 +116,41 @@ class FetchService:
                 result_items.append(self._serialize_content_item(content_item, item.metadata))
                 total_inserted += 1
 
+            logger.info(
+                "Fetch source completed",
+                extra={
+                    "run_id": request.run_id,
+                    "source_type": source_type,
+                    "elapsed_ms": round((perf_counter() - started_at) * 1000, 2),
+                    "fetched_count": len(incremental_items),
+                    "inserted_count": total_inserted,
+                },
+            )
+
         return FetchBatchResult(
             run_id=request.run_id,
             items=result_items,
+            matched_items=matched_items,
             errors=result_errors,
             stats=FetchBatchStats(
                 total_fetched=total_fetched,
                 total_inserted=total_inserted,
                 total_deduped=total_deduped,
+                sources_succeeded=sources_succeeded,
+                sources_failed=sources_failed,
             ),
         )
 
-    def _load_subscriptions(self, sources: list[str]) -> list[Any]:
+    def _load_subscriptions(self, sources: list[str], subscription_ids: list[int] | None = None) -> list[Any]:
+        load_subscriptions = getattr(self.source_repo, "load_subscriptions", None)
+        if callable(load_subscriptions):
+            return list(load_subscriptions(self.db_session, sources=sources, subscription_ids=subscription_ids or []))
+
         query = self.db_session.query(self.source_repo.SourceSubscription).filter(
             self.source_repo.SourceSubscription.enabled.is_(True)
         )
+        if subscription_ids:
+            query = query.filter(self.source_repo.SourceSubscription.id.in_(subscription_ids))
         if sources:
             query = query.filter(self.source_repo.SourceSubscription.source_type.in_(sources))
         return list(query.order_by(self.source_repo.SourceSubscription.id.asc()).all())
@@ -116,13 +168,7 @@ class FetchService:
     def _update_cursor(self, subscription: Any, source_items: list[SourceItem]) -> None:
         if not source_items:
             return
-        last_item = source_items[-1]
-        cursor_value = None
-        published_at = last_item.metadata.get("published_at") if isinstance(last_item.metadata, dict) else None
-        if published_at:
-            cursor_value = str(published_at)
-        elif last_item.source_id:
-            cursor_value = last_item.source_id
+        cursor_value = self._build_cursor_value(source_items[0])
         if not cursor_value:
             return
         update_cursor = getattr(self.source_repo, "update_cursor", None)
@@ -132,6 +178,75 @@ class FetchService:
         subscription.last_cursor = cursor_value
         self.db_session.add(subscription)
         self.db_session.commit()
+
+    def _build_cursor_value(self, source_item: SourceItem) -> str | None:
+        metadata = source_item.metadata if isinstance(source_item.metadata, dict) else {}
+        published_at = metadata.get("published_at")
+        payload = {
+            "external_id": source_item.source_id,
+            "published_at": str(published_at) if published_at else None,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if not payload["external_id"] and not payload["published_at"]:
+            return None
+        return json.dumps(payload, ensure_ascii=True)
+
+    def _filter_incremental_items(self, source_items: list[SourceItem], raw_cursor: str | None) -> list[SourceItem]:
+        cursor = self._parse_cursor(raw_cursor)
+        if not cursor:
+            return source_items
+
+        cursor_external_id = cursor.get("external_id")
+        cursor_published_at = self._parse_timestamp(cursor.get("published_at"))
+        filtered_items: list[SourceItem] = []
+
+        for item in source_items:
+            if cursor_external_id and item.source_id == cursor_external_id:
+                break
+
+            item_published_at = self._parse_timestamp(
+                item.metadata.get("published_at") if isinstance(item.metadata, dict) else None
+            )
+            if cursor_published_at and item_published_at is not None:
+                if item_published_at > cursor_published_at:
+                    filtered_items.append(item)
+                continue
+
+            filtered_items.append(item)
+
+        return filtered_items
+
+    def _parse_cursor(self, raw_cursor: str | None) -> dict[str, str]:
+        if not raw_cursor:
+            return {}
+        try:
+            parsed = json.loads(raw_cursor)
+        except json.JSONDecodeError:
+            parsed_timestamp = self._parse_timestamp(raw_cursor)
+            if parsed_timestamp is not None:
+                return {"published_at": parsed_timestamp.isoformat()}
+            return {"external_id": raw_cursor}
+
+        if not isinstance(parsed, dict):
+            return {}
+        normalized: dict[str, str] = {}
+        for key in ("external_id", "published_at", "fetched_at"):
+            value = parsed.get(key)
+            if value is None:
+                continue
+            normalized[key] = str(value)
+        return normalized
+
+    def _parse_timestamp(self, value: Any) -> datetime | None:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
 
     def _dedupe_source_items(
         self,

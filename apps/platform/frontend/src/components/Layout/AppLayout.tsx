@@ -5,8 +5,10 @@ import {
   DatabaseOutlined,
   EditOutlined,
   FileSearchOutlined,
+  FileTextOutlined,
   HomeOutlined,
   LogoutOutlined,
+  ProfileOutlined,
   RobotOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -18,9 +20,11 @@ const { Text } = Typography;
 
 const navItems: MenuProps['items'] = [
   { key: '/', icon: <HomeOutlined />, label: '首页' },
-  { key: '/sources', icon: <DatabaseOutlined />, label: '数据源' },
-  { key: '/fetch-runs', icon: <FileSearchOutlined />, label: '采集历史' },
-  { key: '/content-queue', icon: <EditOutlined />, label: '审核队列' },
+  { key: '/sources', icon: <DatabaseOutlined />, label: '信源管理' },
+  { key: '/fetch-runs', icon: <FileSearchOutlined />, label: '抓取历史' },
+  { key: '/content-queue', icon: <ProfileOutlined />, label: '内容列表' },
+  { key: '/review-queue', icon: <EditOutlined />, label: '审核队列' },
+  { key: '/digests', icon: <FileTextOutlined />, label: '日报' },
   { key: '/agent', icon: <RobotOutlined />, label: '任务调度' },
   { key: '/create', icon: <EditOutlined />, label: '创建文章' },
 ];
@@ -37,6 +41,8 @@ export default function AppLayout() {
       return exactMatch.key;
     }
     if (path.startsWith('/post/')) return '/';
+    if (path.startsWith('/review-queue')) return '/review-queue';
+    if (path.startsWith('/digests')) return '/digests';
     return '/';
   }, [location.pathname]);
 
@@ -95,7 +101,7 @@ export default function AppLayout() {
             selectedKeys={[selectedKey]}
             items={navItems}
             onClick={({ key }) => navigate(key)}
-            style={{ borderBottom: 'none', minWidth: 560 }}
+            style={{ borderBottom: 'none', minWidth: 760 }}
           />
         </div>
 

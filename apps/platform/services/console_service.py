@@ -316,6 +316,23 @@ def publish_content_to_post(
     row.reviewed_at = now
     row.draft_post_id = post.id
     db.add(
+        models.PublishRecord(
+            content_item_id=row.id,
+            target_type="blog",
+            target_name="console_post",
+            status="success",
+            external_id=str(post.id),
+            response_payload=_to_json(
+                {
+                    "post_id": post.id,
+                    "source_url": row.source_url,
+                    "tech_tags": body.tech_tags,
+                }
+            ),
+            published_at=now,
+        )
+    )
+    db.add(
         models.ReviewDecision(
             content_item_id=row.id,
             decision="published",

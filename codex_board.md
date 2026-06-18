@@ -156,5 +156,6 @@ graph TD
 - 2026-06-18: Console manual processing feedback is now actionable. `/console/fetch-runs/{id}/process` returns `review_queue_path`, `review_status`, and `next_action`, Console API imports were aligned to package paths, and targeted console/review/radar pytest groups pass. Test-only JWT usage still emits `InsecureKeyLengthWarning` because the local test secret remains short.
 - 2026-06-18: Console publish feedback now closes the review-to-publish loop. `/console/content-items/{id}/publish-to-post` returns `post_id`, `post_path`, `publish_status`, and `next_action`, and targeted console/publish/review/radar pytest groups pass. Test-only JWT warnings remain expected with the short local secret.
 - 2026-06-18: Review approval now surfaces the publish handoff. `/api/internal/content/reviews/{id}/approve` returns `publish_path`, `publish_status`, and `next_action`, so the review queue can hand users straight into the publish step. Targeted review/console/publish/radar pytest groups pass.
+- 2026-06-18: Added a lightweight manual-loop e2e for `fetch -> radar -> review -> publish`. The new in-memory pipeline test verifies review queue creation, approval handoff, draft post creation, and publish record persistence. Console sync publish now also writes `PublishRecord` for parity with other publish paths.
 
 *?????2026-06-12*

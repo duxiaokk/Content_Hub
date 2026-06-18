@@ -119,6 +119,9 @@ def test_approve_review_updates_review_and_content_item() -> None:
     body = response.json()
     assert body["data"]["status"] == "approved"
     assert body["data"]["reviewer"] == "admin"
+    assert body["data"]["publish_status"] == "pending"
+    assert body["data"]["publish_path"] == "/console/content-items/1/publish-to-post"
+    assert body["data"]["next_action"] == "publish_to_post"
 
     db = session_factory()
     review = db.query(ReviewQueue).filter(ReviewQueue.id == review_id).first()
@@ -169,6 +172,8 @@ def test_approve_review_with_edits_persists_edited_content() -> None:
     body = response.json()
     assert body["data"]["candidate_title"] == "Edited Title"
     assert body["data"]["candidate_content"] == "Edited Content"
+    assert body["data"]["publish_path"] == f"/console/content-items/{body['data']['content_item_id']}/publish-to-post"
+    assert body["data"]["next_action"] == "publish_to_post"
 
     db = session_factory()
     review = db.query(ReviewQueue).filter(ReviewQueue.id == review_id).first()

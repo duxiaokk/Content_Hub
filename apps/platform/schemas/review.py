@@ -21,6 +21,9 @@ class ReviewQueueOut(BaseModel):
     score: float | None = None
     tags: list[str] | None = None
     source_url: str | None = None
+    publish_status: str | None = None
+    publish_path: str | None = None
+    next_action: str | None = None
 
 
 class ReviewApproveRequest(BaseModel):

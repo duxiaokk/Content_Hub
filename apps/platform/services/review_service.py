@@ -146,5 +146,8 @@ class ReviewService:
             score=float(item.score) if item.score is not None else None,
             tags=tags,
             source_url=item.source_url,
+            publish_status=item.publish_status,
+            publish_path=f"/console/content-items/{item.id}/publish-to-post" if review.status == "approved" else None,
+            next_action="publish_to_post" if review.status == "approved" else None,
         )
         return payload.model_dump(mode="json")

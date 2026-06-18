@@ -20,7 +20,7 @@ for path in (PLATFORM_DIR, REPO_ROOT):
         sys.path.insert(0, path_str)
 
 from apps.platform.database import Base, get_db
-from apps.platform.models import FetchRun, SourceConfig
+from apps.platform.models import ContentItem, FetchRun, SourceConfig
 from apps.platform.security import create_access_token
 
 
@@ -106,3 +106,46 @@ def test_console_process_fetch_run_returns_review_queue_hint(monkeypatch) -> Non
     assert body["data"]["review_status"] == "pending"
     assert body["data"]["review_queue_path"] == "/api/internal/content/reviews/?status=pending"
     assert body["data"]["next_action"] == "open_review_queue"
+
+
+def test_console_publish_to_post_returns_post_hint() -> None:
+    client, session_factory = _build_client()
+
+    db = session_factory()
+    item = ContentItem(
+        source_type="rss",
+        source_id="console-publish-1",
+        title="Original Title",
+        source_url="https://example.com/console-publish-1",
+        language="zh",
+        raw_content="Original Content",
+        processed_content="Processed Content",
+        rewritten_title="Rewritten Title",
+        rewritten_content="Rewritten Content",
+        tags_json='["python","fastapi"]',
+        score=4.5,
+        publish_status="pending",
+        pipeline_status="processed",
+        review_status="approved",
+        digest_included=False,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    content_item_id = int(item.id)
+    db.close()
+
+    response = client.post(
+        f"/console/content-items/{content_item_id}/publish-to-post",
+        headers={"authorization": f"Bearer {create_access_token({'sub': 'tester'})}"},
+        json={},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["code"] == 0
+    assert body["data"]["post_id"] > 0
+    assert body["data"]["post_path"] == f"/posts/{body['data']['post_id']}"
+    assert body["data"]["publish_status"] == "published"
+    assert body["data"]["next_action"] == "open_post_draft"
+    assert body["data"]["content_item"]["publish_status"] == "published"

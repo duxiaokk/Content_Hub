@@ -97,6 +97,14 @@ class TriggerProcessFetchRunResponse(BaseModel):
     next_action: str
 
 
+class PublishToPostResponse(BaseModel):
+    content_item: dict[str, Any]
+    post_id: int
+    post_path: str
+    publish_status: str
+    next_action: str
+
+
 class ContentItemSummary(BaseModel):
     id: int
     source_config_id: int | None = None

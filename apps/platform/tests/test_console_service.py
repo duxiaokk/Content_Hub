@@ -11,9 +11,13 @@ from sqlalchemy.orm import Session
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from apps.platform.database import Base
-from apps.platform.models import FetchRun, SourceConfig
-from apps.platform.schemas.console import TriggerProcessFetchRunRequest
-from apps.platform.services.console_service import sync_content_items_from_result, trigger_process_fetch_run
+from apps.platform.models import ContentItem, FetchRun, SourceConfig
+from apps.platform.schemas.console import PublishToPostRequest, TriggerProcessFetchRunRequest
+from apps.platform.services.console_service import (
+    publish_content_to_post,
+    sync_content_items_from_result,
+    trigger_process_fetch_run,
+)
 
 
 def test_sync_content_items_from_result_items() -> None:
@@ -118,3 +122,43 @@ def test_trigger_process_fetch_run_submits_radar_task(monkeypatch) -> None:
         "trigger_type": "manual",
         "requested_by": "tester",
     }
+
+
+def test_publish_content_to_post_returns_post_hint() -> None:
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+
+    with Session(bind=engine) as session:
+        item = ContentItem(
+            source_type="rss",
+            source_id="publish-console-1",
+            title="Original title",
+            source_url="https://example.com/publish-console-1",
+            language="zh",
+            raw_content="Original content",
+            processed_content="Processed content",
+            rewritten_title="Rewritten title",
+            rewritten_content="Rewritten content",
+            tags_json='["python"]',
+            score=4.5,
+            publish_status="pending",
+            pipeline_status="processed",
+            review_status="approved",
+            digest_included=False,
+        )
+        session.add(item)
+        session.commit()
+        session.refresh(item)
+
+        result = publish_content_to_post(
+            session,
+            item,
+            "tester",
+            PublishToPostRequest(),
+        )
+
+        assert result["post_id"] > 0
+        assert result["post_path"] == f"/posts/{result['post_id']}"
+        assert result["publish_status"] == "published"
+        assert result["next_action"] == "open_post_draft"
+        assert result["content_item"]["publish_status"] == "published"

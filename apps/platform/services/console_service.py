@@ -14,6 +14,7 @@ from apps.platform.crud.crud_content_item import get_content_item_by_source, upd
 from apps.platform.crud.crud_post import create_post as crud_create_post
 from apps.platform.scheduler_client import get_scheduler_client
 from apps.platform.schemas.console import (
+    PublishToPostResponse,
     PublishToPostRequest,
     SourceConfigCreateRequest,
     SourceConfigUpdateRequest,
@@ -326,7 +327,14 @@ def publish_content_to_post(
     )
     db.commit()
     db.refresh(row)
-    return {"content_item": serialize_content_item(row), "post_id": post.id}
+    response = PublishToPostResponse(
+        content_item=serialize_content_item(row),
+        post_id=int(post.id),
+        post_path=f"/posts/{post.id}",
+        publish_status="published",
+        next_action="open_post_draft",
+    )
+    return response.model_dump()
 
 
 def serialize_source(row: models.SourceConfig) -> dict[str, Any]:

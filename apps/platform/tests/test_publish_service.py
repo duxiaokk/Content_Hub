@@ -17,8 +17,8 @@ for path in (PLATFORM_DIR, REPO_ROOT):
         sys.path.insert(0, path_str)
 
 from apps.platform.database import Base
-from models import ContentItem, Post, PublishRecord
-from services.publish_service import PublishService
+from apps.platform.models import ContentItem, Post, PublishRecord
+from apps.platform.services.publish_service import PublishService
 
 
 def _session_factory() -> sessionmaker:

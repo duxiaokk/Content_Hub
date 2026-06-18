@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-import models
-from core.api_schemas import ApiResponse, paginated, success
-from core.permissions import RequireUser
-from database import get_db
-from schemas.console import (
+from apps.platform import models
+from apps.platform.core.api_schemas import ApiResponse, paginated, success
+from apps.platform.core.permissions import RequireUser
+from apps.platform.database import get_db
+from apps.platform.schemas.console import (
     PublishToPostRequest,
     ReviewActionRequest,
     SourceConfigCreateRequest,
@@ -17,7 +17,7 @@ from schemas.console import (
     TriggerFetchRequest,
     TriggerProcessFetchRunRequest,
 )
-from services.console_service import (
+from apps.platform.services.console_service import (
     approve_content_item,
     create_source,
     get_content_item_or_404,

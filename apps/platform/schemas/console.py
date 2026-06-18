@@ -87,6 +87,16 @@ class TriggerFetchResponse(BaseModel):
     status: str
 
 
+class TriggerProcessFetchRunResponse(BaseModel):
+    fetch_run_id: int
+    task_id: str | None = None
+    trace_id: str | None = None
+    status: str
+    review_status: str
+    review_queue_path: str
+    next_action: str
+
+
 class ContentItemSummary(BaseModel):
     id: int
     source_config_id: int | None = None

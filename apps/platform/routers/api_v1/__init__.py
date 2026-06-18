@@ -6,12 +6,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from routers.api_v1.ai import router as ai_router
-from routers.api_v1.auth import router as auth_router
-from routers.api_v1.comments import router as comments_router
-from routers.api_v1.console import router as console_router
-from routers.api_v1.posts import router as posts_router
-from routers.api_v1.admin import router as admin_router
+from apps.platform.routers.api_v1.admin import router as admin_router
+from apps.platform.routers.api_v1.ai import router as ai_router
+from apps.platform.routers.api_v1.auth import router as auth_router
+from apps.platform.routers.api_v1.comments import router as comments_router
+from apps.platform.routers.api_v1.console import router as console_router
+from apps.platform.routers.api_v1.posts import router as posts_router
 
 api_v1 = APIRouter(prefix="/api/v1")
 

@@ -19,6 +19,7 @@ from apps.platform.schemas.console import (
     SourceConfigUpdateRequest,
     TriggerFetchRequest,
     TriggerProcessFetchRunRequest,
+    TriggerProcessFetchRunResponse,
 )
 from apps.workflow_engine.registry.contracts import SourceItem
 from apps.workflow_engine.runtime.content_repository import ContentRepository
@@ -181,12 +182,16 @@ def trigger_process_fetch_run(
         payload=payload,
         idempotency_key=idempotency_key,
     )
-    return {
-        "fetch_run_id": fetch_run.id,
-        "task_id": submit.get("id"),
-        "trace_id": submit.get("trace_id"),
-        "status": str(submit.get("status") or "pending"),
-    }
+    response = TriggerProcessFetchRunResponse(
+        fetch_run_id=int(fetch_run.id),
+        task_id=submit.get("id"),
+        trace_id=submit.get("trace_id"),
+        status=str(submit.get("status") or "pending"),
+        review_status="pending",
+        review_queue_path="/api/internal/content/reviews/?status=pending",
+        next_action="open_review_queue",
+    )
+    return response.model_dump()
 
 
 def list_fetch_runs(

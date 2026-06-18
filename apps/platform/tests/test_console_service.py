@@ -103,6 +103,9 @@ def test_trigger_process_fetch_run_submits_radar_task(monkeypatch) -> None:
         "task_id": "task-radar-1",
         "trace_id": "trace-radar-1",
         "status": "pending",
+        "review_status": "pending",
+        "review_queue_path": "/api/internal/content/reviews/?status=pending",
+        "next_action": "open_review_queue",
     }
     assert submitted["task_type"] == "content.pipeline.radar"
     assert submitted["payload"] == {

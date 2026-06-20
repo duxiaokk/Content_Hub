@@ -20,6 +20,7 @@ from apps.platform.schemas.console import (
 from apps.platform.services.console_service import (
     approve_content_item,
     create_source,
+    delete_source,
     get_content_item_or_404,
     get_source_or_404,
     list_content_items,
@@ -61,6 +62,16 @@ async def console_update_source(
 ):
     row = get_source_or_404(db, source_id)
     return success(update_source(db, row, body), "更新成功")
+
+
+@router.delete("/sources/{source_id}", response_model=ApiResponse)
+async def console_delete_source(
+    source_id: int,
+    _user: RequireUser,
+    db: Session = Depends(get_db),
+):
+    delete_source(db, source_id)
+    return success(None, "删除成功")
 
 
 @router.post("/sources/{source_id}/run", response_model=ApiResponse)

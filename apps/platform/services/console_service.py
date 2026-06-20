@@ -91,6 +91,18 @@ def create_source(db: Session, body: SourceConfigCreateRequest) -> dict[str, Any
     return serialize_source(row)
 
 
+def delete_source(db: Session, source_id: int) -> None:
+    row = db.query(models.SourceConfig).filter(models.SourceConfig.id == source_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail={"code": ErrorCode.NOT_FOUND, "message": "数据源不存在"})
+
+    # 先删除关联的 FetchRun（source_config_id 是 NOT NULL）
+    db.query(models.FetchRun).filter(models.FetchRun.source_config_id == source_id).delete(synchronize_session=False)
+    # 再删除 SourceConfig
+    db.query(models.SourceConfig).filter(models.SourceConfig.id == source_id).delete(synchronize_session=False)
+    db.commit()
+
+
 def update_source(db: Session, row: models.SourceConfig, body: SourceConfigUpdateRequest) -> dict[str, Any]:
     if body.name is not None:
         row.name = body.name.strip()

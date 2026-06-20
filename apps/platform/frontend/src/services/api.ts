@@ -244,6 +244,10 @@ export async function listSourceConfigs(): Promise<SourceConfig[]> {
   return res.data.data;
 }
 
+export async function deleteSourceConfig(id: number): Promise<void> {
+  await apiClient.delete(`/console/sources/${id}`);
+}
+
 export async function createSourceConfig(data: SourceConfigPayload): Promise<SourceConfig> {
   const res = await apiClient.post<ApiResponse<SourceConfig>>('/console/sources', data);
   return res.data.data;

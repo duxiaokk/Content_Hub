@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Collapse, Drawer, Form, Input, Select, Space, Switch, Table, Typography, message } from 'antd';
+import { Button, Card, Collapse, Drawer, Form, Input, Modal, Select, Space, Switch, Table, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { createSourceConfig, listSourceConfigs, triggerSourceRun, updateSourceConfig } from '../../services/api';
+import { createSourceConfig, deleteSourceConfig, listSourceConfigs, triggerSourceRun, updateSourceConfig } from '../../services/api';
 import type { SourceConfig, SourceConfigPayload } from '../../types';
 
 const { Title, Text } = Typography;
@@ -338,7 +338,12 @@ export default function SourcesPage() {
       setDrawerOpen(false);
       await load();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '保存失败');
+      const errorMsg = error instanceof Error ? error.message : '保存失败';
+      if (errorMsg.includes('409') || errorMsg.includes('Conflict') || errorMsg.includes('conflict') || errorMsg.includes('数据源名称已存在')) {
+        message.error('该信源名称已存在，请换一个名称');
+      } else {
+        message.error(errorMsg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -365,6 +370,25 @@ export default function SourcesPage() {
     } catch (error) {
       message.error(error instanceof Error ? error.message : '触发抓取失败');
     }
+  };
+
+  const handleDelete = (item: SourceConfig) => {
+    Modal.confirm({
+      title: '确认删除信源',
+      content: `确定要删除「${item.name}」吗？关联的采集历史也会被一并删除。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      async onOk() {
+        try {
+          await deleteSourceConfig(item.id);
+          message.success('信源已删除');
+          await load();
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : '删除失败');
+        }
+      },
+    });
   };
 
   const columns = useMemo<ColumnsType<SourceConfig>>(
@@ -427,7 +451,7 @@ export default function SourcesPage() {
       {
         title: '操作',
         key: 'actions',
-        width: 220,
+        width: 280,
         render: (_, record) => (
           <Space>
             <Button size="small" onClick={() => openEdit(record)}>
@@ -435,6 +459,9 @@ export default function SourcesPage() {
             </Button>
             <Button size="small" type="primary" onClick={() => void handleTriggerFetch(record)}>
               手动抓取
+            </Button>
+            <Button size="small" danger onClick={() => handleDelete(record)}>
+              删除
             </Button>
           </Space>
         ),

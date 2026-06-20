@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Dropdown, Layout, Menu, Space, Typography } from 'antd';
 import {
+  AppstoreOutlined,
+  DashboardOutlined,
   DatabaseOutlined,
   EditOutlined,
   FileSearchOutlined,
@@ -19,14 +21,21 @@ const { Header, Content, Footer } = Layout;
 const { Text } = Typography;
 
 const navItems: MenuProps['items'] = [
-  { key: '/', icon: <HomeOutlined />, label: '首页' },
+  { key: '/', icon: <DashboardOutlined />, label: '工作台' },
   { key: '/sources', icon: <DatabaseOutlined />, label: '信源管理' },
-  { key: '/fetch-runs', icon: <FileSearchOutlined />, label: '抓取历史' },
-  { key: '/content-queue', icon: <ProfileOutlined />, label: '内容列表' },
+  {
+    key: 'content-hub',
+    icon: <AppstoreOutlined />,
+    label: '内容库',
+    children: [
+      { key: '/content-queue', icon: <ProfileOutlined />, label: '内容列表' },
+      { key: '/posts', icon: <FileTextOutlined />, label: '文章管理' },
+      { key: '/fetch-runs', icon: <FileSearchOutlined />, label: '抓取历史' },
+    ],
+  },
   { key: '/review-queue', icon: <EditOutlined />, label: '审核队列' },
   { key: '/digests', icon: <FileTextOutlined />, label: '日报' },
   { key: '/agent', icon: <RobotOutlined />, label: '任务调度' },
-  { key: '/create', icon: <EditOutlined />, label: '创建文章' },
 ];
 
 export default function AppLayout() {
@@ -36,11 +45,15 @@ export default function AppLayout() {
 
   const selectedKey = useMemo(() => {
     const path = location.pathname;
+    // 精确匹配
     const exactMatch = navItems?.find((item) => item && 'key' in item && item.key === path);
     if (exactMatch && typeof exactMatch.key === 'string') {
       return exactMatch.key;
     }
-    if (path.startsWith('/post/')) return '/';
+    // 子路由匹配
+    if (path.startsWith('/posts/')) return '/posts';
+    if (path.startsWith('/fetch-runs')) return '/fetch-runs';
+    if (path.startsWith('/content-queue')) return '/content-queue';
     if (path.startsWith('/review-queue')) return '/review-queue';
     if (path.startsWith('/digests')) return '/digests';
     return '/';
@@ -101,7 +114,7 @@ export default function AppLayout() {
             selectedKeys={[selectedKey]}
             items={navItems}
             onClick={({ key }) => navigate(key)}
-            style={{ borderBottom: 'none', minWidth: 760 }}
+            style={{ borderBottom: 'none', minWidth: 600 }}
           />
         </div>
 

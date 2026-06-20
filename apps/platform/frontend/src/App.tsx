@@ -4,7 +4,8 @@ import AppLayout from './components/Layout/AppLayout';
 import AuthGuard from './components/AuthGuard';
 import LoginPage from './pages/Login/LoginPage';
 import RegisterPage from './pages/Register/RegisterPage';
-import HomePage from './pages/Home/HomePage';
+import DashboardPage from './pages/Dashboard/DashboardPage';
+import PostListPage from './pages/PostList/PostListPage';
 import PostDetailPage from './pages/PostDetail/PostDetailPage';
 import PostCreatePage from './pages/PostCreate/PostCreatePage';
 import AgentConsolePage from './pages/AgentConsole/AgentConsolePage';
@@ -37,14 +38,15 @@ export default function App() {
           </AuthGuard>
         }
       >
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<DashboardPage />} />
         <Route path="/sources" element={<SourcesPage />} />
         <Route path="/fetch-runs" element={<FetchRunsPage />} />
         <Route path="/content-queue" element={<ContentQueuePage />} />
         <Route path="/review-queue" element={<ReviewQueuePage />} />
         <Route path="/digests" element={<DigestPage />} />
-        <Route path="/post/:id" element={<PostDetailPage />} />
-        <Route path="/create" element={<PostCreatePage />} />
+        <Route path="/posts" element={<PostListPage />} />
+        <Route path="/posts/:id" element={<PostDetailPage />} />
+        <Route path="/posts/new" element={<PostCreatePage />} />
         <Route path="/agent" element={<AgentConsolePage />} />
       </Route>
 

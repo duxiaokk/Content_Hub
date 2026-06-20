@@ -10,7 +10,7 @@ const { Title, Text } = Typography;
 
 const sourceTypeOptions = [
   { label: 'RSS', value: 'rss' },
-  { label: 'GitHub', value: 'github' },
+  { label: 'GitHub', value: 'github_trending' },
   { label: 'Reddit', value: 'reddit' },
   { label: 'CNBlogs', value: 'cnblogs' },
   { label: 'Bilibili', value: 'bilibili' },

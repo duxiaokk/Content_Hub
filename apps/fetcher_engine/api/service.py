@@ -162,6 +162,17 @@ class FetchService:
             kwargs["feed_url"] = subscription.feed_url
         if getattr(subscription, "source_name", None):
             kwargs["source_name"] = subscription.source_name
+        # 从 config 或 config_json 中读取通用参数（如 xiaohongshu 的 urls）
+        config = getattr(subscription, "config", None)
+        if config is None and hasattr(subscription, "config_json"):
+            import json
+            try:
+                config = json.loads(subscription.config_json)
+            except (json.JSONDecodeError, TypeError):
+                config = None
+        if isinstance(config, dict):
+            if "urls" in config:
+                kwargs["urls"] = config["urls"]
         stream_key = getattr(subscription, "account_identifier", None) or f"{subscription.source_type}:{subscription.id}"
         kwargs["stream_key"] = stream_key
         return fetcher_factory(**kwargs)

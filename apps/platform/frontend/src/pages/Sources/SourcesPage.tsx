@@ -14,6 +14,7 @@ const sourceTypeOptions = [
   { label: 'Reddit', value: 'reddit' },
   { label: 'CNBlogs', value: 'cnblogs' },
   { label: 'Bilibili', value: 'bilibili' },
+  { label: '小红书', value: 'xiaohongshu' },
 ];
 
 const initialValues: SourceConfigPayload = {
@@ -293,9 +294,9 @@ export default function SourcesPage() {
           <Form.Item
             name="configText"
             label="配置 JSON"
-            tooltip="按不同 source_type 填写实际抓取参数，例如 feed_url、subreddit、username 等。"
+            tooltip="按不同 source_type 填写实际抓取参数，例如 feed_url、subreddit、username、urls 等。"
           >
-            <Input.TextArea rows={8} placeholder={'{\n  "feed_url": "https://example.com/feed.xml"\n}'} />
+            <Input.TextArea rows={8} placeholder={'{\n  "urls": [\n    "https://www.xiaohongshu.com/discovery/item/xxx?xsec_token=..."\n  ]\n}'} />
           </Form.Item>
         </Form>
       </Drawer>

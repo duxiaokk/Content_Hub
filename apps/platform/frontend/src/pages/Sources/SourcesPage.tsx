@@ -112,15 +112,36 @@ export default function SourcesPage() {
     setDrawerOpen(true);
   };
 
-  // 智能链接解析：粘贴 URL 自动识别平台并填充配置
+  // 从混合文本中提取所有 URL
+  const extractUrls = (text: string): string[] => {
+    const regex = /https?:\/\/[^\s"'<>]+/gi;
+    return text.match(regex) || [];
+  };
+
   const parseLink = (url: string): { source_type: string; config: Record<string, unknown> } | null => {
+    const raw = url.trim();
+    if (!raw) return null;
+
+    let targetUrl: string | null = null;
     try {
-      const u = new URL(url.trim());
+      // 先尝试整个输入作为 URL
+      new URL(raw);
+      targetUrl = raw;
+    } catch {
+      // 不是纯 URL，从文本中提取
+      const extracted = extractUrls(raw);
+      // 小红书分享文本格式：标题 😆 短链接 😆 完整链接，取最后一个（最完整）
+      targetUrl = extracted.length > 0 ? extracted[extracted.length - 1] : null;
+      if (!targetUrl) return null;
+    }
+
+    try {
+      const u = new URL(targetUrl);
       const hostname = u.hostname.toLowerCase();
 
       // 小红书（支持短链和完整链接）
       if (hostname.includes('xiaohongshu.com') || hostname.includes('xhslink.com')) {
-        return { source_type: 'xiaohongshu', config: { urls: [url.trim()] } };
+        return { source_type: 'xiaohongshu', config: { urls: [targetUrl] } };
       }
 
       // Bilibili
@@ -135,9 +156,9 @@ export default function SourcesPage() {
         }
         // 已经是 RSSHub 链接
         if (u.pathname.includes('/bilibili/')) {
-          return { source_type: 'bilibili', config: { feed_url: url.trim() } };
+          return { source_type: 'bilibili', config: { feed_url: targetUrl } };
         }
-        return { source_type: 'bilibili', config: { feed_url: url.trim() } };
+        return { source_type: 'bilibili', config: { feed_url: targetUrl } };
       }
 
       // Reddit
@@ -159,17 +180,17 @@ export default function SourcesPage() {
 
       // CNBlogs
       if (hostname.includes('cnblogs.com') || hostname.includes('feed.cnblogs.com')) {
-        return { source_type: 'cnblogs', config: { feed_url: url.trim() } };
+        return { source_type: 'cnblogs', config: { feed_url: targetUrl } };
       }
 
       // RSSHub
       if (hostname.includes('rsshub.app')) {
-        return { source_type: 'rss', config: { feed_url: url.trim() } };
+        return { source_type: 'rss', config: { feed_url: targetUrl } };
       }
 
       // 通用 RSS 特征
-      if (url.trim().endsWith('.xml') || url.trim().endsWith('.rss') || url.trim().includes('/feed')) {
-        return { source_type: 'rss', config: { feed_url: url.trim() } };
+      if (targetUrl.endsWith('.xml') || targetUrl.endsWith('.rss') || targetUrl.includes('/feed')) {
+        return { source_type: 'rss', config: { feed_url: targetUrl } };
       }
 
       return null;

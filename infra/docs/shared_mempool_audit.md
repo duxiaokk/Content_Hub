@@ -142,3 +142,14 @@
 3. `content_bridge` 的示例注册名已开始替换旧的 `ado-repost`
 
 这说明共享库治理已经从“只做说明”进入“开始改默认值”的阶段，但兼容读取暂时仍会保留。
+
+---
+
+## 9. 清理完成（2026-06-19）
+
+- `libs/shared_mempool` 目录已完全删除
+- `libs/shared_memory` 作为唯一共享库持续维护
+- `content_bridge.mempool` 的 `sys.path.insert` 和 `try/except ModuleNotFoundError` 已移除
+- 所有模块均直接使用 `from shared_memory import ...` 导入
+
+`shared_mempool` 治理已结束。

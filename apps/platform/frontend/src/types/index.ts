@@ -143,6 +143,7 @@ export interface ContentItem {
   score?: number | null;
   tags?: string[];
   category?: string | null;
+  metadata?: Record<string, unknown> | null;
   pipeline_status: string;
   review_status: string;
   publish_status: string;

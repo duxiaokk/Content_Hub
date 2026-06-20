@@ -408,6 +408,12 @@ def serialize_content_item(row: models.ContentItem) -> dict[str, Any]:
         "title": row.title,
         "raw_content": row.raw_content,
         "processed_content": row.processed_content,
+        "summary": row.summary,
+        "rewritten_title": row.rewritten_title,
+        "rewritten_content": row.rewritten_content,
+        "tags_json": row.tags_json,
+        "score": row.score,
+        "metadata_json": _from_json(row.metadata_json, {}),
         "pipeline_status": row.pipeline_status,
         "review_status": row.review_status,
         "publish_status": row.publish_status,
@@ -508,9 +514,12 @@ def sync_content_items_from_result(
         source_id = build_content_source_id(item)
         if not source_id:
             continue
-        raw_content = str(item.get("content") or "").strip() or None
+        raw_content = str(item.get("raw_content") or "").strip() or None
         title = str(item.get("title") or "").strip() or source_id
-        source_url = str(item.get("link") or "").strip() or None
+        source_url = str(item.get("link") or item.get("source_url") or "").strip() or None
+        summary = str(item.get("summary") or "").strip() or None
+        metadata = item.get("metadata")
+        metadata_json = _to_json(metadata) if isinstance(metadata, dict) else None
         existing = get_content_item_by_source(db, source.source_type, source_id)
         if existing:
             update_content_item(
@@ -522,6 +531,8 @@ def sync_content_items_from_result(
                 title=title,
                 raw_content=raw_content,
                 processed_content=raw_content,
+                summary=summary,
+                metadata_json=metadata_json,
                 pipeline_status="processed",
                 review_status="pending_review",
                 publish_status="pending",
@@ -558,6 +569,8 @@ def sync_content_items_from_result(
                 title=title,
                 raw_content=raw_content,
                 processed_content=raw_content,
+                summary=summary,
+                metadata_json=metadata_json,
                 publish_status="pending",
                 pipeline_status="processed",
                 review_status="pending_review",

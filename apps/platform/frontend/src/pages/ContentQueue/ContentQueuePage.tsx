@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Collapse, Select, Space, Table, Tag, Typography, message } from 'antd';
+import { Button, Card, Collapse, Image, Select, Space, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { getReviews, listConsoleContentItems, publishConsoleContentItem } from '../../services/api';
@@ -15,6 +15,23 @@ const reviewStatusOptions = [
   { label: 'archived', value: 'archived' },
   { label: 'pending_review', value: 'pending_review' },
 ];
+
+function extractMediaUrls(metadata?: Record<string, unknown> | null): string[] {
+  if (!metadata) return [];
+  const urls: string[] = [];
+  const cover = metadata.cover_url || metadata.cover;
+  if (typeof cover === 'string' && cover) urls.push(cover);
+  const media = metadata.media;
+  if (Array.isArray(media)) {
+    for (const m of media) {
+      if (typeof m === 'string' && m) urls.push(m);
+      else if (typeof m === 'object' && m && typeof (m as Record<string, unknown>).url === 'string') {
+        urls.push((m as Record<string, unknown>).url as string);
+      }
+    }
+  }
+  return urls;
+}
 
 export default function ContentQueuePage() {
   const navigate = useNavigate();
@@ -94,6 +111,16 @@ export default function ContentQueuePage() {
             <Text strong>{record.title}</Text>
             <Text type="secondary">{record.source_type}</Text>
           </Space>
+        ),
+      },
+      {
+        title: '摘要',
+        key: 'summary',
+        width: 240,
+        render: (_, record) => (
+          <Paragraph ellipsis={{ rows: 2, expandable: false }} style={{ marginBottom: 0, maxWidth: 220 }}>
+            {record.summary || record.raw_content || '-'}
+          </Paragraph>
         ),
       },
       {
@@ -215,29 +242,66 @@ export default function ContentQueuePage() {
           columns={columns}
           dataSource={items}
           expandable={{
-            expandedRowRender: (record) => (
-              <Collapse
-                items={[
-                  {
-                    key: 'summary',
-                    label: '摘要',
-                    children: <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>{record.summary || '-'}</Paragraph>,
-                  },
-                  {
-                    key: 'rewrite',
-                    label: '改写结果',
-                    children: (
-                      <div>
-                        <Paragraph strong>{record.rewritten_title || record.title}</Paragraph>
+            expandedRowRender: (record) => {
+              const mediaUrls = extractMediaUrls(record.metadata);
+              return (
+                <Collapse
+                  items={[
+                    {
+                      key: 'summary',
+                      label: '摘要',
+                      children: (
                         <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
-                          {record.rewritten_content || record.processed_content || '-'}
+                          {record.summary || '-'}
                         </Paragraph>
-                      </div>
-                    ),
-                  },
-                ]}
-              />
-            ),
+                      ),
+                    },
+                    {
+                      key: 'raw',
+                      label: '原始内容',
+                      children: (
+                        <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
+                          {record.raw_content || '-'}
+                        </Paragraph>
+                      ),
+                    },
+                    {
+                      key: 'rewrite',
+                      label: '改写结果',
+                      children: (
+                        <div>
+                          <Paragraph strong>{record.rewritten_title || record.title}</Paragraph>
+                          <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
+                            {record.rewritten_content || record.processed_content || '-'}
+                          </Paragraph>
+                        </div>
+                      ),
+                    },
+                    ...(mediaUrls.length > 0
+                      ? [
+                          {
+                            key: 'media',
+                            label: '图片 / 媒体',
+                            children: (
+                              <Space wrap>
+                                {mediaUrls.map((url, idx) => (
+                                  <Image
+                                    key={idx}
+                                    src={url}
+                                    alt={`media-${idx}`}
+                                    style={{ maxHeight: 160, objectFit: 'cover' }}
+                                    fallback="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                                  />
+                                ))}
+                              </Space>
+                            ),
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
+              );
+            },
           }}
           pagination={false}
         />

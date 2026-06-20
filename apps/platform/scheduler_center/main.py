@@ -13,8 +13,11 @@ from scheduler_center.dispatcher import SchedulerDispatcher
 from scheduler_center.router import router
 from scheduler_center.orchestration_router import router as orchestration_router
 
+from apps.platform.multi_agent.orchestrator import Orchestrator
+from apps.platform.multi_agent.message_schemas import OrchestrationRequest
 
 dispatcher = SchedulerDispatcher()
+_orchestrator = Orchestrator()
 
 
 def _check_db() -> None:
@@ -67,4 +70,21 @@ def ready() -> dict[str, object]:
             detail=f"db not ready: {exc}",
         ) from exc
     return {"status": "ready", "db_ok": True}
+
+
+# Multi-Agent Orchestrator 入口
+@app.post("/api/internal/orchestrate")
+async def orchestrate(request: OrchestrationRequest) -> dict[str, object]:
+    """用户意图提交到 Multi-Agent Orchestrator。"""
+    result = await _orchestrator.execute(intent=request.intent, context=request.context)
+    return {
+        "trace_id": result.trace_id,
+        "success": result.success,
+        "summary": result.summary,
+        "aggregated_result": result.aggregated_result,
+        "task_count": result.task_count,
+        "succeeded_count": result.succeeded_count,
+        "failed_count": result.failed_count,
+        "duration_seconds": result.duration_seconds,
+    }
 

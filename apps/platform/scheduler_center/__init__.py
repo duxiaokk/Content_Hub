@@ -7,6 +7,12 @@ import sysconfig
 from pathlib import Path
 
 
+# 确保 apps/platform 在 sys.path 中，以便 scheduler_center 内部能作为顶级模块导入
+_PLATFORM_DIR = Path(__file__).resolve().parent.parent
+if str(_PLATFORM_DIR) not in sys.path:
+    sys.path.insert(0, str(_PLATFORM_DIR))
+
+
 def _ensure_stdlib_platform() -> None:
     existing = sys.modules.get("platform")
     if existing is not None and hasattr(existing, "python_implementation"):

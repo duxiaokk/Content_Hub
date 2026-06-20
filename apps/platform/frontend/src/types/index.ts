@@ -19,6 +19,8 @@ export interface Post {
   author_id: number;
   author_name?: string;
   author_avatar?: string;
+  image_path?: string | null;
+  media_json?: string | null;
   status: 'draft' | 'published';
   liked?: boolean;
   created_at: string;

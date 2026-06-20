@@ -25,6 +25,7 @@ import {
   SendOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
+import MediaGallery from '../../components/MediaGallery';
 import {
   getPost,
   likePost,
@@ -235,6 +236,9 @@ export default function PostDetailPage() {
             ))}
           </div>
         )}
+
+        {/* 媒体展示：封面、视频、图片画廊 */}
+        <MediaGallery mediaJson={post.media_json} />
 
         <Divider style={{ margin: '16px 0 24px' }} />
 

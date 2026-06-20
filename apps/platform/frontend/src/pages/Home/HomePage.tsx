@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { List, Card, Typography, Tag, Button, Space, Skeleton, Empty, Pagination, message } from 'antd';
 import { EyeOutlined, LikeOutlined, CalendarOutlined, UserOutlined } from '@ant-design/icons';
+import { PostCardCover } from '../../components/MediaGallery';
 import { listPosts } from '../../services/api';
 import type { Post } from '../../types';
 import dayjs from 'dayjs';
@@ -87,6 +88,7 @@ export default function HomePage() {
                   style={{ width: '100%', height: '100%' }}
                   onClick={() => navigate(`/post/${post.id}`)}
                   bodyStyle={{ padding: 20 }}
+                  cover={<PostCardCover mediaJson={post.media_json} />}
                 >
                   <Title level={5} ellipsis={{ rows: 2 }} style={{ marginBottom: 12, minHeight: 48 }}>
                     {post.title}

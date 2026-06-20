@@ -154,6 +154,37 @@ body {
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
+/* 媒体画廊样式 */
+.media-gallery img {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.media-gallery img:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 视频播放器容器 */
+.video-player-container {
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+}
+
+/* 文章卡片封面 */
+.post-card-cover {
+  position: relative;
+  overflow: hidden;
+}
+
+.post-card-cover img {
+  transition: transform 0.4s ease;
+}
+
+.post-card-cover:hover img {
+  transform: scale(1.05);
+}
+
 /* 列表项 hover 效果 */
 .ant-list-item:hover {
   background-color: #fafafa;

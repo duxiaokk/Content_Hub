@@ -7,10 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
-try:
-    from routers.internal_tasks import ContentWorkflowRunRequest, build_content_workflow_payload
-except ImportError:  # pragma: no cover - package import fallback
-    from apps.platform.routers.internal_tasks import ContentWorkflowRunRequest, build_content_workflow_payload
+from routers.internal_tasks import ContentWorkflowRunRequest, build_content_workflow_payload
 from scheduler_center.auth import verify_internal_token
 from scheduler_center.database import get_db
 from scheduler_center.dispatcher import TaskStatus

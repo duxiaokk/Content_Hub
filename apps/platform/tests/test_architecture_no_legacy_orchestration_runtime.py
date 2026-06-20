@@ -34,10 +34,9 @@ def test_platform_runtime_sources_use_workflow_engine_entrypoints() -> None:
 
 def test_legacy_layers_are_marked_frozen_compatibility() -> None:
     legacy_files = [
-        ROOT / "platform" / "scheduler_center" / "orchestration_engine.py",
         ROOT / "platform" / "services" / "planner_service.py",
         ROOT / "platform" / "services" / "aggregator_service.py",
     ]
     for path in legacy_files:
         content = path.read_text(encoding="utf-8")
-        assert "Compatibility layer only." in content
+        assert "Compatibility layer only." in content, f"{path} should be marked as compatibility layer"

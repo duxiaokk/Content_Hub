@@ -7,10 +7,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-try:
-    from scheduler_center.config import scheduler_settings
-except ImportError:  # pragma: no cover - package import fallback
-    from apps.platform.scheduler_center.config import scheduler_settings
+from scheduler_center.config import scheduler_settings
 
 logger = logging.getLogger(__name__)
 

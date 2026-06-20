@@ -1,14 +1,9 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
-try:
-    from shared_memory import MemoryPool, MemoryPoolConfig
-except ModuleNotFoundError:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "libs" / "shared_memory" / "src"))
-    from shared_memory import MemoryPool, MemoryPoolConfig
+from shared_memory import MemoryPool, MemoryPoolConfig
 
 
 def create_pool() -> MemoryPool:

@@ -1,4 +1,4 @@
-﻿# Content Hub MVP - Codex Board
+# Content Hub MVP - Codex Board
 
 > 鎬昏繘搴︾湅鏉?路 19 涓换鍔?路 鎸夋帹鑽愬紑鍙戦『搴忔帓鍒?
 ---
@@ -158,5 +158,6 @@ graph TD
 - 2026-06-18: Review approval now surfaces the publish handoff. `/api/internal/content/reviews/{id}/approve` returns `publish_path`, `publish_status`, and `next_action`, so the review queue can hand users straight into the publish step. Targeted review/console/publish/radar pytest groups pass.
 - 2026-06-18: Added a lightweight manual-loop e2e for `fetch -> radar -> review -> publish`. The new in-memory pipeline test verifies review queue creation, approval handoff, draft post creation, and publish record persistence. Console sync publish now also writes `PublishRecord` for parity with other publish paths.
 - 2026-06-18: Console frontend wiring is now aligned with the v1 manual loop. Sources page uses `listSourceConfigs/createSourceConfig/updateSourceConfig/triggerSourceRun`, FetchRuns page can submit `/console/fetch-runs/{id}/process`, ReviewQueue and ContentQueue expose `publish-to-post`, and `npx tsc -b` passes. `vite build` still fails in this environment with `spawn EPERM` when `esbuild` starts.
+- 2026-06-19: Architecture debt cleanup. Removed duplicate `ado_repost` module (empty shell wrapping `content_bridge`), deleted unused `shared_mempool` library (superseded by `shared_memory`), removed frozen `orchestration_engine.py` legacy layer, and cleaned up temporary patch scripts. Fixed `content_bridge/processors/pipeline.py` circular dependency (`ado_repost` -> `content_bridge`). Simplified `try/except ImportError` fallback paths in `scheduler_center/database.py`, `models.py`, `orchestration_router.py`, and `crud_content_item.py`. Restored `dispatcher.py` dual-path imports to avoid module double-loading in tests. Added `requirements.txt` at project root. Updated `README.md` launch command. Updated architecture boundary test to reflect removed `orchestration_engine.py`. `pytest` architecture/workflow_unification/fetcher/ai/workflow/publisher/dispatcher groups pass. Platform API tests (source/review/console) still fail with pre-existing SQLite index conflict (`index ix_posts_module_id already exists`) — environment-level issue, not introduced by this cleanup.
 
-*?????2026-06-12*
+*最后更新: 2026-06-19*

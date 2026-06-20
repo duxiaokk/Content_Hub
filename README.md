@@ -94,9 +94,9 @@ fetchers:
 运行采集：
 
 ```bash
-cd apps/ado_repost
+cd apps/ado_repost/src
 $env:PYTHONPATH='src'
-py -m ado_repost.main --config config.yaml
+py -m content_bridge.main --config ../config.yaml
 ```
 
 采集结果会写入 `data/run_result.json`，同时自动同步到 platform 的内容仓库。

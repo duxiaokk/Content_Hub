@@ -4,10 +4,10 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
-from ado_repost.processors.dedup import LinkDeduplicator, link_md5
-from ado_repost.processors.formatter import MessageFormatter, StandardMessageFormatter
-from ado_repost.processors.translator import PassthroughTranslator, Translator, contains_japanese
-from ado_repost.schema import DynamicItem, HistoryRecord, ProcessBatch, ProcessedItem
+from content_bridge.processors.dedup import LinkDeduplicator, link_md5
+from content_bridge.processors.formatter import MessageFormatter, StandardMessageFormatter
+from content_bridge.processors.translator import PassthroughTranslator, Translator, contains_japanese
+from content_bridge.schema import DynamicItem, HistoryRecord, ProcessBatch, ProcessedItem
 
 
 class ContentProcessor:

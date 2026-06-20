@@ -1,0 +1,42 @@
+# Content Hub - Python Dependencies
+# Install: pip install -r requirements.txt
+
+# Web Framework
+fastapi==0.137.2
+starlette==1.3.1
+uvicorn==0.49.0
+
+# Data & ORM
+SQLAlchemy==2.0.51
+alembic==1.18.4
+
+# Validation & Config
+pydantic==2.13.4
+pydantic-settings==2.14.1
+
+# HTTP Client
+httpx==0.28.1
+
+# Auth & Security
+passlib==1.7.4
+python-jose[cryptography]==3.4.0
+
+# Serialization
+PyYAML==6.0.3
+
+# Templating
+Jinja2==3.1.6
+
+# Async Utilities
+anyio==4.14.0
+
+# CLI
+click==8.4.1
+
+# Testing (dev only)
+pytest==9.1.0
+
+# Observability (optional)
+# opentelemetry-instrumentation-fastapi==0.63b1
+# opentelemetry-instrumentation-httpx==0.63b1
+# opentelemetry-instrumentation-sqlalchemy==0.63b1

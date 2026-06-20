@@ -11,7 +11,7 @@ def test_blog_publisher_disabled_mode() -> None:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
     from publisher_engine.adapters.blog.publisher import BlogPublisher
-    from workflow_engine.registry.contracts import ContentAsset, PublishTarget
+    from apps.workflow_engine.registry.contracts import ContentAsset, PublishTarget
 
     publisher = BlogPublisher()
     result = __import__("asyncio").run(
@@ -39,7 +39,7 @@ def test_blog_publisher_publish_draft_maps_to_success(monkeypatch) -> None:
 
     from publisher_engine.adapters.blog.publisher import BlogPublisher
     from publisher_engine.runtime.models import PublishRequest
-    from workflow_engine.registry.contracts import PublishResult
+    from apps.workflow_engine.registry.contracts import PublishResult
 
     async def fake_publish(self, content, target):
         return PublishResult(status="published", target_name=target.target_name, external_id="42")
@@ -72,7 +72,7 @@ def test_blog_publisher_publish_draft_maps_to_failed(monkeypatch) -> None:
 
     from publisher_engine.adapters.blog.publisher import BlogPublisher
     from publisher_engine.runtime.models import PublishRequest
-    from workflow_engine.registry.contracts import PublishResult
+    from apps.workflow_engine.registry.contracts import PublishResult
 
     async def fake_publish(self, content, target):
         return PublishResult(status="failed", target_name=target.target_name, error_message="network error")

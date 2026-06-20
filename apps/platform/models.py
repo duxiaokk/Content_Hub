@@ -43,6 +43,7 @@ class Post(Base):
     module_id = Column(String(64), nullable=True, index=True)
     scenario_type = Column(String(64), nullable=True)
     task_type = Column(String(128), nullable=True)
+    media_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     deleted_at = Column(DateTime, nullable=True, index=True)
     deleted_by = Column(String(150), nullable=True, index=True)
@@ -169,6 +170,7 @@ class ContentItem(Base):
     digest_included = Column(Boolean, nullable=False, default=False, index=True)
     draft_post_id = Column(Integer, ForeignKey("posts.id"), nullable=True, index=True)
     error_message = Column(Text, nullable=True)
+    metadata_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     updated_at = Column(
         DateTime,

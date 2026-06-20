@@ -112,6 +112,7 @@ class FetchService:
                     language="zh",
                     pipeline_status="fetched",
                     review_status="pending",
+                    metadata_json=self._serialize_metadata(item.metadata),
                 )
                 result_items.append(self._serialize_content_item(content_item, item.metadata))
                 total_inserted += 1
@@ -290,3 +291,11 @@ class FetchService:
             return "[]"
         tags = [tag.strip() for tag in raw_tags.split(",") if tag.strip()]
         return "[" + ", ".join(f'\"{tag}\"' for tag in tags) + "]"
+
+    def _serialize_metadata(self, metadata: dict[str, Any] | None) -> str | None:
+        if not metadata:
+            return None
+        try:
+            return json.dumps(metadata, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            return None

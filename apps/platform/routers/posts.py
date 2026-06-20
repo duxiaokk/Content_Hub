@@ -41,6 +41,7 @@ def get_post_detail(
         "content": post.content,
         "like_count": int(post.like_count or 0),
         "image_path": post.image_path,
+        "media_json": post.media_json,
         "created_at": post.created_at.isoformat() if post.created_at else None,
         "author_name": "Ado_Jk",
         "liked": payload["post_liked"],

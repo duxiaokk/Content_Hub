@@ -40,6 +40,7 @@ class CreatePostRequest(BaseModel):
     content: str = Field(..., min_length=1, description="Markdown 内容")
     tech_tags: str | None = Field(default=None, description="技术标签，逗号分隔")
     image_path: str | None = Field(default=None, description="封面图片路径")
+    media_json: str | None = Field(default=None, description="媒体 JSON（封面、视频、图片列表）")
 
 
 class UpdatePostRequest(BaseModel):
@@ -47,6 +48,7 @@ class UpdatePostRequest(BaseModel):
     content: str | None = Field(default=None, min_length=1, description="Markdown 内容")
     tech_tags: str | None = Field(default=None, description="技术标签")
     image_path: str | None = Field(default=None, description="封面图片路径")
+    media_json: str | None = Field(default=None, description="媒体 JSON")
 
 
 class PostDetail(BaseModel):
@@ -55,6 +57,7 @@ class PostDetail(BaseModel):
     content: str
     like_count: int = 0
     image_path: str | None = None
+    media_json: str | None = None
     created_at: str | None = None
     author_name: str = "Ado_Jk"
     liked: bool = False
@@ -120,6 +123,7 @@ async def get_post(
     return success(PostDetail(
         id=post.id, title=post.title, content=post.content,
         like_count=int(post.like_count or 0), image_path=post.image_path,
+        media_json=post.media_json,
         created_at=post.created_at.isoformat() if post.created_at else None,
         liked=payload.get("post_liked", False),
     ).model_dump())
@@ -140,12 +144,14 @@ async def create_new_post(
 
     try:
         post = crud_create_post(db, title=body.title, content=body.content,
-                                image_path=body.image_path, tech_tag=body.tech_tags)
+                                image_path=body.image_path, tech_tag=body.tech_tags,
+                                media_json=body.media_json)
     except Exception as exc:
         return error(ErrorCode.DB_ERROR, str(exc))
 
     return success(
         PostDetail(id=post.id, title=post.title, content=post.content,
+                   media_json=post.media_json,
                    created_at=post.created_at.isoformat() if post.created_at else None).model_dump(),
         "文章创建成功",
     )
@@ -179,12 +185,15 @@ async def update_existing_post(
         post.tech_tag = body.tech_tags
     if body.image_path is not None:
         post.image_path = body.image_path
+    if body.media_json is not None:
+        post.media_json = body.media_json
 
     db.commit()
     db.refresh(post)
 
     return success(
         PostDetail(id=post.id, title=post.title, content=post.content,
+                   media_json=post.media_json,
                    created_at=post.created_at.isoformat() if post.created_at else None).model_dump(),
         "文章更新成功",
     )

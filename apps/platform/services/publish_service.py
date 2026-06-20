@@ -50,11 +50,13 @@ class PublishService:
         resolved_run_id = run_id or f"blog-draft-{content_item_id}"
 
         try:
+            media_data = self._extract_media(item)
             post = Post(
                 title=title,
                 content=content,
                 published=False,
                 tech_tag=tags[0] if tags else None,
+                media_json=json.dumps(media_data, ensure_ascii=False) if media_data else None,
             )
             self.db.add(post)
             self.db.flush()
@@ -116,3 +118,40 @@ class PublishService:
         except json.JSONDecodeError:
             return []
         return [str(tag) for tag in parsed if str(tag)]
+
+    @staticmethod
+    def _extract_media(item: ContentItem) -> dict[str, Any] | None:
+        """从 ContentItem.metadata_json 中提取媒体引用信息。"""
+        if not item.metadata_json:
+            return None
+        try:
+            meta = json.loads(item.metadata_json)
+        except json.JSONDecodeError:
+            return None
+
+        media: dict[str, Any] = {}
+        # 提取封面图
+        cover = meta.get("cover_url") or meta.get("cover")
+        if cover:
+            media["cover_url"] = cover
+
+        # 提取视频链接
+        video = meta.get("video_url") or meta.get("video")
+        if video:
+            media["video_url"] = video
+
+        # 提取图片列表
+        images = meta.get("images") or meta.get("imageList") or meta.get("image_list")
+        if isinstance(images, list) and images:
+            media["images"] = [str(u) for u in images if isinstance(u, str)]
+
+        # bilibili 专用：metadata.media 列表
+        raw_media = meta.get("media")
+        if isinstance(raw_media, list) and raw_media and "images" not in media:
+            media["images"] = [str(u) for u in raw_media if isinstance(u, str)]
+
+        # 原始平台链接（用于嵌入 iframe）
+        if item.source_url:
+            media["source_url"] = item.source_url
+
+        return media if media else None

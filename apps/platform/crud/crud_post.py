@@ -29,8 +29,12 @@ def create_post(
     content: str,
     image_path: str | None = None,
     tech_tag: str | None = None,
+    media_json: str | None = None,
 ) -> models.Post:
-    new_post = models.Post(title=title, content=content, image_path=image_path, tech_tag=tech_tag)
+    new_post = models.Post(
+        title=title, content=content, image_path=image_path, tech_tag=tech_tag,
+        media_json=media_json,
+    )
     db.add(new_post)
     db.commit()
     db.refresh(new_post)

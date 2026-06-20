@@ -53,6 +53,7 @@ export default function SourcesPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<SourceConfig | null>(null);
   const [form] = Form.useForm<SourceFormValues>();
+  const [importUrl, setImportUrl] = useState('');
 
   // 监听来源类型变化，用于动态渲染字段
   const sourceType = Form.useWatch('source_type', form);
@@ -84,6 +85,7 @@ export default function SourcesPage() {
       config_since: 'daily',
       config_urls: '',
     });
+    setImportUrl('');
     setDrawerOpen(true);
   };
 
@@ -108,6 +110,102 @@ export default function SourcesPage() {
       config_urls: Array.isArray(cfg.urls) ? (cfg.urls as string[]).join('\n') : (cfg.urls as string) || '',
     });
     setDrawerOpen(true);
+  };
+
+  // 智能链接解析：粘贴 URL 自动识别平台并填充配置
+  const parseLink = (url: string): { source_type: string; config: Record<string, unknown> } | null => {
+    try {
+      const u = new URL(url.trim());
+      const hostname = u.hostname.toLowerCase();
+
+      // 小红书（支持短链和完整链接）
+      if (hostname.includes('xiaohongshu.com') || hostname.includes('xhslink.com')) {
+        return { source_type: 'xiaohongshu', config: { urls: [url.trim()] } };
+      }
+
+      // Bilibili
+      if (hostname.includes('bilibili.com')) {
+        const spaceMatch = u.pathname.match(/\/space\/(\d+)/);
+        if (spaceMatch) {
+          const uid = spaceMatch[1];
+          return {
+            source_type: 'bilibili',
+            config: { feed_url: `https://rsshub.app/bilibili/user/video/${uid}` },
+          };
+        }
+        // 已经是 RSSHub 链接
+        if (u.pathname.includes('/bilibili/')) {
+          return { source_type: 'bilibili', config: { feed_url: url.trim() } };
+        }
+        return { source_type: 'bilibili', config: { feed_url: url.trim() } };
+      }
+
+      // Reddit
+      if (hostname.includes('reddit.com') || hostname.includes('redd.it')) {
+        const m = u.pathname.match(/\/r\/([^/]+)/);
+        if (m) {
+          return { source_type: 'reddit', config: { subreddit: m[1] } };
+        }
+      }
+
+      // GitHub Trending
+      if (hostname.includes('github.com') && u.pathname.includes('/trending')) {
+        const langMatch = u.pathname.match(/\/trending\/([^/]+)/);
+        return {
+          source_type: 'github_trending',
+          config: langMatch ? { language: langMatch[1] } : {},
+        };
+      }
+
+      // CNBlogs
+      if (hostname.includes('cnblogs.com') || hostname.includes('feed.cnblogs.com')) {
+        return { source_type: 'cnblogs', config: { feed_url: url.trim() } };
+      }
+
+      // RSSHub
+      if (hostname.includes('rsshub.app')) {
+        return { source_type: 'rss', config: { feed_url: url.trim() } };
+      }
+
+      // 通用 RSS 特征
+      if (url.trim().endsWith('.xml') || url.trim().endsWith('.rss') || url.trim().includes('/feed')) {
+        return { source_type: 'rss', config: { feed_url: url.trim() } };
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleParseLink = () => {
+    if (!importUrl.trim()) {
+      message.warning('请先粘贴链接');
+      return;
+    }
+    const result = parseLink(importUrl);
+    if (!result) {
+      message.error('无法识别该链接，请手动选择来源类型');
+      return;
+    }
+
+    const { source_type, config } = result;
+    const updates: Record<string, unknown> = { source_type };
+
+    if (source_type === 'xiaohongshu') {
+      updates.config_urls = Array.isArray(config.urls) ? (config.urls as string[]).join('\n') : '';
+    } else if (source_type === 'reddit') {
+      updates.config_subreddit = config.subreddit || '';
+    } else if (source_type === 'github_trending') {
+      updates.config_language = config.language || '';
+      updates.config_since = 'daily';
+    } else if (source_type === 'rss' || source_type === 'cnblogs' || source_type === 'bilibili') {
+      updates.config_feed_url = config.feed_url || '';
+    }
+
+    form.setFieldsValue(updates);
+    message.success(`已识别为 ${source_type}，配置已自动填充`);
+    setImportUrl('');
   };
 
   // 根据当前 source_type 和表单值自动组装 config
@@ -411,6 +509,20 @@ export default function SourcesPage() {
             config_since: 'daily',
           }}
         >
+          <Form.Item label="从链接导入">
+            <Space.Compact style={{ width: '100%' }}>
+              <Input
+                placeholder="粘贴 RSS / Reddit / 小红书 / B站空间 / GitHub 链接..."
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                onPressEnter={handleParseLink}
+              />
+              <Button onClick={handleParseLink}>解析</Button>
+            </Space.Compact>
+            <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+              支持：RSS 链接、Reddit 社区、小红书笔记、B站空间、GitHub Trending 等
+            </Text>
+          </Form.Item>
           <Form.Item name="source_type" label="来源类型" rules={[{ required: true, message: '请选择来源类型' }]}>
             <Select options={sourceTypeOptions} />
           </Form.Item>

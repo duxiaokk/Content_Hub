@@ -250,6 +250,51 @@ export default function SourcesPage() {
     return config;
   };
 
+  // 校验最终生成的 config 格式和必填
+  const validateConfig = (config: Record<string, unknown>, st: string): string | null => {
+    if (st === 'rss') {
+      const url = (config.feed_url as string) || '';
+      if (!url) return 'RSS 链接不能为空';
+      try {
+        new URL(url);
+      } catch {
+        return 'RSS 链接格式不正确（需要以 http:// 或 https:// 开头）';
+      }
+    } else if (st === 'cnblogs' || st === 'bilibili') {
+      const url = (config.feed_url as string) || '';
+      if (url) {
+        try {
+          new URL(url);
+        } catch {
+          return 'RSS 链接格式不正确（需要以 http:// 或 https:// 开头）';
+        }
+      }
+    } else if (st === 'reddit') {
+      const sub = (config.subreddit as string) || '';
+      if (!sub) return 'Subreddit 名称不能为空';
+      if (!/^[a-zA-Z0-9_-]+$/.test(sub)) {
+        return 'Subreddit 名称只能包含字母、数字、下划线和横线';
+      }
+    } else if (st === 'github_trending') {
+      const lang = (config.language as string) || '';
+      if (lang && !/^[a-zA-Z0-9+#\s-]+$/.test(lang)) {
+        return '编程语言名称格式不正确';
+      }
+    } else if (st === 'xiaohongshu') {
+      const urls = config.urls;
+      if (!Array.isArray(urls) || urls.length === 0) return '至少填写一个笔记链接';
+      for (const url of urls) {
+        if (typeof url !== 'string') return '链接格式不正确';
+        try {
+          new URL(url);
+        } catch {
+          return `链接格式不正确: ${url}`;
+        }
+      }
+    }
+    return null;
+  };
+
   const handleSubmit = async () => {
     const values = await form.validateFields();
 
@@ -265,6 +310,11 @@ export default function SourcesPage() {
     }
 
     const config = buildConfig(values);
+    const configError = validateConfig(config, values.source_type);
+    if (configError) {
+      message.error(configError);
+      return;
+    }
     const payload: SourceConfigPayload = {
       name: values.name,
       source_type: values.source_type,
@@ -397,27 +447,49 @@ export default function SourcesPage() {
   const renderDynamicConfig = () => {
     switch (sourceType) {
       case 'rss':
+        return (
+          <Form.Item
+            name="config_feed_url"
+            label="RSS 链接"
+            rules={[
+              { required: true, message: 'RSS 链接不能为空' },
+              { type: 'url', message: 'RSS 链接格式不正确' },
+            ]}
+            tooltip="RSS 订阅地址，例如 https://rsshub.app/36kr/news"
+          >
+            <Input placeholder="https://rsshub.app/..." />
+          </Form.Item>
+        );
       case 'cnblogs':
       case 'bilibili':
         return (
           <Form.Item
             name="config_feed_url"
             label="RSS 链接"
+            rules={[
+              {
+                validator: (_, value) => {
+                  if (!value?.trim()) return Promise.resolve();
+                  try {
+                    new URL(value.trim());
+                    return Promise.resolve();
+                  } catch {
+                    return Promise.reject(new Error('RSS 链接格式不正确'));
+                  }
+                },
+              },
+            ]}
             tooltip={
               sourceType === 'cnblogs'
                 ? '留空则使用默认博客园 RSS'
-                : sourceType === 'bilibili'
-                  ? '留空则使用默认 UP 主 RSS（RSSHUB）'
-                  : 'RSS 订阅地址，例如 https://rsshub.app/36kr/news'
+                : '留空则使用默认 UP 主 RSS（RSSHUB）'
             }
           >
             <Input
               placeholder={
                 sourceType === 'cnblogs'
                   ? 'https://feed.cnblogs.com/blog/u/xxx/rss'
-                  : sourceType === 'bilibili'
-                    ? 'https://rsshub.app/bilibili/user/video/xxx'
-                    : 'https://rsshub.app/...'
+                  : 'https://rsshub.app/bilibili/user/video/xxx'
               }
             />
           </Form.Item>
@@ -428,6 +500,15 @@ export default function SourcesPage() {
             <Form.Item
               name="config_language"
               label="编程语言"
+              rules={[
+                {
+                  validator: (_, value) => {
+                    if (!value?.trim()) return Promise.resolve();
+                    if (/^[a-zA-Z0-9+#\s-]+$/.test(value.trim())) return Promise.resolve();
+                    return Promise.reject(new Error('编程语言名称格式不正确'));
+                  },
+                },
+              ]}
               tooltip="例如：python, javascript, go。留空表示全语言"
             >
               <Input placeholder="python" />
@@ -442,6 +523,10 @@ export default function SourcesPage() {
           <Form.Item
             name="config_subreddit"
             label="Subreddit"
+            rules={[
+              { required: true, message: 'Subreddit 名称不能为空' },
+              { pattern: /^[a-zA-Z0-9_-]+$/, message: '只能包含字母、数字、下划线和横线' },
+            ]}
             tooltip="Reddit 社区名称，例如：artificial, programming"
           >
             <Input placeholder="artificial" />
@@ -452,6 +537,23 @@ export default function SourcesPage() {
           <Form.Item
             name="config_urls"
             label="笔记链接"
+            rules={[
+              { required: true, message: '至少填写一个笔记链接' },
+              {
+                validator: (_, value) => {
+                  if (!value?.trim()) return Promise.resolve();
+                  const lines = value.split('\n').map((s: string) => s.trim()).filter(Boolean);
+                  for (const line of lines) {
+                    try {
+                      new URL(line);
+                    } catch {
+                      return Promise.reject(new Error(`链接格式不正确: ${line}`));
+                    }
+                  }
+                  return Promise.resolve();
+                },
+              },
+            ]}
             tooltip="每行一个笔记分享链接，自动解析内容"
           >
             <Input.TextArea

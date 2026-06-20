@@ -8,6 +8,7 @@ from apps.fetcher_engine.connectors.bilibili.fetcher import BilibiliFetcher
 from apps.fetcher_engine.connectors.cnblogs.fetcher import CNBlogsFetcher
 from apps.fetcher_engine.connectors.github_trending.fetcher import GitHubTrendingFetcher
 from apps.fetcher_engine.connectors.reddit.fetcher import RedditFetcher
+from apps.fetcher_engine.connectors.xiaohongshu.fetcher import XiaohongshuFetcher
 from apps.publisher_engine.adapters.blog.publisher import BlogPublisher
 from apps.workflow_engine.registry.contracts import AIProcessorConfig
 from apps.workflow_engine.registry.settings import PipelineSettings
@@ -20,6 +21,7 @@ def build_default_registry() -> None:
     registry.register_fetcher(BilibiliFetcher(feed_url=settings.bilibili_feed_url))
     registry.register_fetcher(GitHubTrendingFetcher())
     registry.register_fetcher(RedditFetcher())
+    registry.register_fetcher(XiaohongshuFetcher(api_base_url=settings.xhs_downloader_url))
     registry.register_processor(
         RewriteProcessor(
             AIProcessorConfig(

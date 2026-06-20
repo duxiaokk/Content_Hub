@@ -14,6 +14,10 @@ class PipelineSettings:
         "CONTENT_HUB_BILIBILI_FEED_URL",
         "https://rsshub.app/bilibili/user/video/2267573",
     )
+    xhs_downloader_url: str = os.getenv(
+        "CONTENT_HUB_XHS_DOWNLOADER_URL",
+        "http://127.0.0.1:5556",
+    )
     llm_provider: str = os.getenv("CONTENT_HUB_LLM_PROVIDER", "openai")
     llm_model: str = os.getenv("CONTENT_HUB_LLM_MODEL", "gpt-4.1-mini")
     llm_max_tokens_per_call: int = int(os.getenv("CONTENT_HUB_LLM_MAX_TOKENS", "4000"))

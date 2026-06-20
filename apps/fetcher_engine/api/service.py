@@ -53,7 +53,7 @@ class FetchService:
                 fetcher = self._build_fetcher(fetcher_factory, subscription)
                 source_items = await fetcher.fetch(
                     FetchRequest(
-                        source_name=subscription.source_name,
+                        source_name=getattr(subscription, "name", None) or getattr(subscription, "source_name", None) or "",
                         lookback_hours=request.lookback_hours,
                         limit=request.limit_per_source,
                         cursor=subscription.last_cursor,
@@ -160,8 +160,10 @@ class FetchService:
         kwargs: dict[str, Any] = {}
         if getattr(subscription, "feed_url", None):
             kwargs["feed_url"] = subscription.feed_url
-        if getattr(subscription, "source_name", None):
-            kwargs["source_name"] = subscription.source_name
+        # 兼容测试中的 source_name 和实际模型中的 name
+        source_name = getattr(subscription, "name", None) or getattr(subscription, "source_name", None)
+        if source_name:
+            kwargs["source_name"] = source_name
         # 从 config 或 config_json 中读取通用参数（如 xiaohongshu 的 urls）
         config = getattr(subscription, "config", None)
         if config is None and hasattr(subscription, "config_json"):

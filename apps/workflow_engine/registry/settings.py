@@ -14,9 +14,13 @@ class PipelineSettings:
         "CONTENT_HUB_BILIBILI_FEED_URL",
         "https://rsshub.app/bilibili/user/video/2267573",
     )
-    xhs_downloader_url: str = os.getenv(
-        "CONTENT_HUB_XHS_DOWNLOADER_URL",
-        "http://127.0.0.1:5556",
+    xiaohongshu_cookie: str = os.getenv(
+        "CONTENT_HUB_XIAOHONGSHU_COOKIE",
+        "",
+    )
+    xiaohongshu_proxy: str = os.getenv(
+        "CONTENT_HUB_XIAOHONGSHU_PROXY",
+        "",
     )
     llm_provider: str = os.getenv("CONTENT_HUB_LLM_PROVIDER", "openai")
     llm_model: str = os.getenv("CONTENT_HUB_LLM_MODEL", "gpt-4.1-mini")

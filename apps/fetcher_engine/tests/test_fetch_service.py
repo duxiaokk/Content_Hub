@@ -42,6 +42,7 @@ class ContentItem(Base):
     pipeline_status = Column(String(32), nullable=False, default="fetched")
     review_status = Column(String(32), nullable=False, default="pending")
     digest_included = Column(Boolean, nullable=False, default=False)
+    metadata_json = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, nullable=True)
 

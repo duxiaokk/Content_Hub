@@ -13,61 +13,64 @@ def _request(limit: int = 10):
     )()
 
 
-def _image_note_response():
+def _image_note_data():
     return {
-        "title": "西安美食探店",
-        "desc": "这家泡馍真的绝了！",
-        "nickname": "littlekycap",
-        "type": "图片",
-        "downloads": [
+        "作品标题": "西安美食探店",
+        "作品描述": "这家泡馍真的绝了！",
+        "作者昵称": "littlekycap",
+        "作品类型": "图文",
+        "下载地址": [
             "https://example.com/img1.jpg",
             "https://example.com/img2.png",
         ],
-        "published_at": "2026-06-20T10:00:00+08:00",
-        "id": "abc123",
+        "发布时间": "2026-06-20T10:00:00+08:00",
+        "作品ID": "abc123",
     }
 
 
-def _video_note_response():
+def _video_note_data():
     return {
-        "title": "Vlog 日常",
-        "desc": "今天去了大雁塔~",
-        "nickname": "littlekycap",
-        "type": "视频",
-        "downloads": [
+        "作品标题": "Vlog 日常",
+        "作品描述": "今天去了大雁塔~",
+        "作者昵称": "littlekycap",
+        "作品类型": "视频",
+        "下载地址": [
             "https://example.com/video.mp4",
         ],
-        "cover_url": "https://example.com/cover.jpg",
-        "published_at": "2026-06-19T18:00:00+08:00",
-        "id": "def456",
+        "封面": "https://example.com/cover.jpg",
+        "发布时间": "2026-06-19T18:00:00+08:00",
+        "作品ID": "def456",
     }
 
 
-def _nested_note_response():
+def _nested_note_data():
     return {
-        "data": {
-            "note": {
-                "title": "nested title",
-                "description": "nested desc",
-                "author": "littlekycap",
-                "mediaType": "image",
-                "imageList": [
-                    {"url": "https://example.com/nested1.jpg"},
-                    {"url": "https://example.com/nested2.jpg"},
-                ],
-                "create_time": "2026-06-18T12:00:00+08:00",
-                "id": "ghi789",
-            }
-        }
+        "作品标题": "nested title",
+        "作品描述": "nested desc",
+        "作者昵称": "littlekycap",
+        "作品类型": "图集",
+        "下载地址": [
+            "https://example.com/nested1.jpg",
+            "https://example.com/nested2.jpg",
+        ],
+        "发布时间": "2026-06-18T12:00:00+08:00",
+        "作品ID": "ghi789",
     }
+
+
+class _FakeXHS:
+    def __init__(self, data_map):
+        self._data_map = data_map
+
+    async def extract(self, url, download=False, data=True):  # noqa: ARG002
+        return self._data_map.get(url, [])
 
 
 def test_xiaohongshu_image_note() -> None:
     fetcher = XiaohongshuFetcher(
         urls=["https://www.xiaohongshu.com/explore/abc123"],
-        api_base_url="http://localhost:5556",
     )
-    fetcher._call_detail_api = lambda url: _image_note_response()  # noqa: ARG005
+    fetcher._xhs = _FakeXHS({"https://www.xiaohongshu.com/explore/abc123": [_image_note_data()]})
 
     items = asyncio.run(fetcher.fetch(_request()))
 
@@ -87,9 +90,8 @@ def test_xiaohongshu_image_note() -> None:
 def test_xiaohongshu_video_note() -> None:
     fetcher = XiaohongshuFetcher(
         urls=["https://www.xiaohongshu.com/explore/def456"],
-        api_base_url="http://localhost:5556",
     )
-    fetcher._call_detail_api = lambda url: _video_note_response()  # noqa: ARG005
+    fetcher._xhs = _FakeXHS({"https://www.xiaohongshu.com/explore/def456": [_video_note_data()]})
 
     items = asyncio.run(fetcher.fetch(_request()))
 
@@ -107,9 +109,8 @@ def test_xiaohongshu_video_note() -> None:
 def test_xiaohongshu_nested_structure() -> None:
     fetcher = XiaohongshuFetcher(
         urls=["https://www.xiaohongshu.com/explore/ghi789"],
-        api_base_url="http://localhost:5556",
     )
-    fetcher._call_detail_api = lambda url: _nested_note_response()  # noqa: ARG005
+    fetcher._xhs = _FakeXHS({"https://www.xiaohongshu.com/explore/ghi789": [_nested_note_data()]})
 
     items = asyncio.run(fetcher.fetch(_request()))
 
@@ -134,15 +135,15 @@ def test_xiaohongshu_api_failure_graceful() -> None:
             "https://www.xiaohongshu.com/explore/bad",
             "https://www.xiaohongshu.com/explore/ok2",
         ],
-        api_base_url="http://localhost:5556",
     )
 
-    def _mock_call(url: str) -> dict:
-        if "bad" in url:
-            raise RuntimeError("xhs api http error: 500")
-        return _image_note_response()
+    class FakeXHS:
+        async def extract(self, url, download=False, data=True):  # noqa: ARG002
+            if "bad" in url:
+                raise RuntimeError("extract failed")
+            return [_image_note_data()]
 
-    fetcher._call_detail_api = _mock_call
+    fetcher._xhs = FakeXHS()
     items = asyncio.run(fetcher.fetch(_request()))
 
     assert len(items) == 2
@@ -155,9 +156,20 @@ def test_xiaohongshu_limit_respected() -> None:
             "https://www.xiaohongshu.com/explore/2",
             "https://www.xiaohongshu.com/explore/3",
         ],
-        api_base_url="http://localhost:5556",
     )
-    fetcher._call_detail_api = lambda url: _image_note_response()  # noqa: ARG005
-
+    fetcher._xhs = _FakeXHS({
+        "https://www.xiaohongshu.com/explore/1": [_image_note_data()],
+        "https://www.xiaohongshu.com/explore/2": [_image_note_data()],
+        "https://www.xiaohongshu.com/explore/3": [_image_note_data()],
+    })
     items = asyncio.run(fetcher.fetch(_request(limit=2)))
     assert len(items) == 2
+
+
+def test_xiaohongshu_returns_empty_on_invalid_data() -> None:
+    fetcher = XiaohongshuFetcher(
+        urls=["https://www.xiaohongshu.com/explore/empty"],
+    )
+    fetcher._xhs = _FakeXHS({"https://www.xiaohongshu.com/explore/empty": [{}]})
+    items = asyncio.run(fetcher.fetch(_request()))
+    assert items == []

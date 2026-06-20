@@ -21,12 +21,7 @@ def build_default_registry() -> None:
     registry.register_fetcher(BilibiliFetcher(feed_url=settings.bilibili_feed_url))
     registry.register_fetcher(GitHubTrendingFetcher())
     registry.register_fetcher(RedditFetcher())
-    registry.register_fetcher(
-        XiaohongshuFetcher(
-            cookie=settings.xiaohongshu_cookie,
-            proxy=settings.xiaohongshu_proxy or None,
-        )
-    )
+    registry.register_fetcher(XiaohongshuFetcher())
     registry.register_processor(
         RewriteProcessor(
             AIProcessorConfig(

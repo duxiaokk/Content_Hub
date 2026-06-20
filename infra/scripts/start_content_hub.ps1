@@ -5,7 +5,11 @@ param(
 
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $appDir = Join-Path $projectRoot "apps\platform"
-$venvPython = Join-Path $appDir ".venv\Scripts\python.exe"
+# 优先使用项目根目录的 .venv（已安装所有依赖）
+$venvPython = Join-Path $projectRoot ".venv\Scripts\python.exe"
+if (-not (Test-Path $venvPython)) {
+  $venvPython = Join-Path $appDir ".venv\Scripts\python.exe"
+}
 
 $env:PYTHONPATH = $projectRoot
 if (-not $env:SECRET_KEY) {

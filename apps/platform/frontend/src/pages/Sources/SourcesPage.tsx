@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Drawer, Form, Input, Select, Space, Switch, Table, Typography, message } from 'antd';
+import { Button, Card, Collapse, Drawer, Form, Input, Select, Space, Switch, Table, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { createSourceConfig, listSourceConfigs, triggerSourceRun, updateSourceConfig } from '../../services/api';
@@ -17,6 +17,12 @@ const sourceTypeOptions = [
   { label: '小红书', value: 'xiaohongshu' },
 ];
 
+const sinceOptions = [
+  { label: 'Daily', value: 'daily' },
+  { label: 'Weekly', value: 'weekly' },
+  { label: 'Monthly', value: 'monthly' },
+];
+
 const initialValues: SourceConfigPayload = {
   name: '',
   source_type: 'rss',
@@ -29,9 +35,15 @@ const initialValues: SourceConfigPayload = {
   config: {},
 };
 
-type SourceFormValues = Omit<SourceConfigPayload, 'config'> & {
+// 扩展表单值，包含动态配置字段
+interface SourceFormValues extends Omit<SourceConfigPayload, 'config'> {
   configText: string;
-};
+  config_feed_url?: string;
+  config_subreddit?: string;
+  config_language?: string;
+  config_since?: string;
+  config_urls?: string;
+}
 
 export default function SourcesPage() {
   const navigate = useNavigate();
@@ -41,6 +53,9 @@ export default function SourcesPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<SourceConfig | null>(null);
   const [form] = Form.useForm<SourceFormValues>();
+
+  // 监听来源类型变化，用于动态渲染字段
+  const sourceType = Form.useWatch('source_type', form);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,12 +78,18 @@ export default function SourcesPage() {
     form.setFieldsValue({
       ...initialValues,
       configText: '{}',
+      config_feed_url: '',
+      config_subreddit: '',
+      config_language: '',
+      config_since: 'daily',
+      config_urls: '',
     });
     setDrawerOpen(true);
   };
 
   const openEdit = (item: SourceConfig) => {
     setEditing(item);
+    const cfg = item.config || {};
     form.setFieldsValue({
       name: item.name,
       source_type: item.source_type,
@@ -78,20 +99,74 @@ export default function SourcesPage() {
       lookback_hours: item.lookback_hours,
       item_limit: item.item_limit,
       dedup_window_hours: item.dedup_window_hours,
-      configText: JSON.stringify(item.config || {}, null, 2),
+      configText: JSON.stringify(cfg, null, 2),
+      // 反解析动态字段
+      config_feed_url: (cfg.feed_url as string) || '',
+      config_subreddit: (cfg.subreddit as string) || '',
+      config_language: (cfg.language as string) || '',
+      config_since: (cfg.since as string) || 'daily',
+      config_urls: Array.isArray(cfg.urls) ? (cfg.urls as string[]).join('\n') : (cfg.urls as string) || '',
     });
     setDrawerOpen(true);
   };
 
+  // 根据当前 source_type 和表单值自动组装 config
+  const buildConfig = (values: SourceFormValues): Record<string, unknown> => {
+    const config: Record<string, unknown> = {};
+    const st = values.source_type;
+
+    if (st === 'rss' || st === 'cnblogs' || st === 'bilibili') {
+      if (values.config_feed_url?.trim()) {
+        config.feed_url = values.config_feed_url.trim();
+      }
+    } else if (st === 'github_trending') {
+      if (values.config_language?.trim()) {
+        config.language = values.config_language.trim();
+      }
+      if (values.config_since) {
+        config.since = values.config_since;
+      }
+    } else if (st === 'reddit') {
+      if (values.config_subreddit?.trim()) {
+        config.subreddit = values.config_subreddit.trim();
+      }
+    } else if (st === 'xiaohongshu') {
+      if (values.config_urls?.trim()) {
+        config.urls = values.config_urls
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+    }
+
+    // 高级 JSON 覆盖（如果用户填写了且不为空对象）
+    const text = values.configText?.trim();
+    if (text && text !== '{}') {
+      try {
+        const override = JSON.parse(text) as Record<string, unknown>;
+        return { ...config, ...override };
+      } catch {
+        // 格式错误已在 handleSubmit 中拦截
+      }
+    }
+    return config;
+  };
+
   const handleSubmit = async () => {
     const values = await form.validateFields();
-    let config: Record<string, unknown> = {};
-    try {
-      config = values.configText ? (JSON.parse(values.configText) as Record<string, unknown>) : {};
-    } catch {
-      message.error('配置 JSON 格式不正确');
-      return;
+
+    // 校验高级 JSON 是否合法（如果用户填了）
+    const text = values.configText?.trim();
+    if (text && text !== '{}') {
+      try {
+        JSON.parse(text);
+      } catch {
+        message.error('配置 JSON 格式不正确');
+        return;
+      }
     }
+
+    const config = buildConfig(values);
     const payload: SourceConfigPayload = {
       name: values.name,
       source_type: values.source_type,
@@ -220,6 +295,78 @@ export default function SourcesPage() {
     []
   );
 
+  // 根据来源类型渲染动态配置字段
+  const renderDynamicConfig = () => {
+    switch (sourceType) {
+      case 'rss':
+      case 'cnblogs':
+      case 'bilibili':
+        return (
+          <Form.Item
+            name="config_feed_url"
+            label="RSS 链接"
+            tooltip={
+              sourceType === 'cnblogs'
+                ? '留空则使用默认博客园 RSS'
+                : sourceType === 'bilibili'
+                  ? '留空则使用默认 UP 主 RSS（RSSHUB）'
+                  : 'RSS 订阅地址，例如 https://rsshub.app/36kr/news'
+            }
+          >
+            <Input
+              placeholder={
+                sourceType === 'cnblogs'
+                  ? 'https://feed.cnblogs.com/blog/u/xxx/rss'
+                  : sourceType === 'bilibili'
+                    ? 'https://rsshub.app/bilibili/user/video/xxx'
+                    : 'https://rsshub.app/...'
+              }
+            />
+          </Form.Item>
+        );
+      case 'github_trending':
+        return (
+          <>
+            <Form.Item
+              name="config_language"
+              label="编程语言"
+              tooltip="例如：python, javascript, go。留空表示全语言"
+            >
+              <Input placeholder="python" />
+            </Form.Item>
+            <Form.Item name="config_since" label="时间周期" initialValue="daily">
+              <Select options={sinceOptions} />
+            </Form.Item>
+          </>
+        );
+      case 'reddit':
+        return (
+          <Form.Item
+            name="config_subreddit"
+            label="Subreddit"
+            tooltip="Reddit 社区名称，例如：artificial, programming"
+          >
+            <Input placeholder="artificial" />
+          </Form.Item>
+        );
+      case 'xiaohongshu':
+        return (
+          <Form.Item
+            name="config_urls"
+            label="笔记链接"
+            tooltip="每行一个笔记分享链接，自动解析内容"
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder="https://www.xiaohongshu.com/discovery/item/xxx?xsec_token=..."
+            />
+          </Form.Item>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -261,6 +408,7 @@ export default function SourcesPage() {
           initialValues={{
             ...initialValues,
             configText: '{}',
+            config_since: 'daily',
           }}
         >
           <Form.Item name="source_type" label="来源类型" rules={[{ required: true, message: '请选择来源类型' }]}>
@@ -291,13 +439,26 @@ export default function SourcesPage() {
           <Form.Item name="enabled" label="启用" valuePropName="checked">
             <Switch />
           </Form.Item>
-          <Form.Item
-            name="configText"
-            label="配置 JSON"
-            tooltip="按不同 source_type 填写实际抓取参数，例如 feed_url、subreddit、username、urls 等。"
-          >
-            <Input.TextArea rows={8} placeholder={'{\n  "urls": [\n    "https://www.xiaohongshu.com/discovery/item/xxx?xsec_token=..."\n  ]\n}'} />
-          </Form.Item>
+
+          {/* 动态配置字段 */}
+          {renderDynamicConfig()}
+
+          {/* 高级 JSON 配置（可选） */}
+          <Collapse ghost>
+            <Collapse.Panel header="高级配置（JSON）" key="advanced">
+              <Form.Item
+                name="configText"
+                tooltip="按不同 source_type 填写实际抓取参数，可覆盖上方表单值。"
+              >
+                <Input.TextArea
+                  rows={6}
+                  placeholder={
+                    '{\n  "urls": [\n    "https://www.xiaohongshu.com/discovery/item/xxx?xsec_token=..."\n  ]\n}'
+                  }
+                />
+              </Form.Item>
+            </Collapse.Panel>
+          </Collapse>
         </Form>
       </Drawer>
     </div>

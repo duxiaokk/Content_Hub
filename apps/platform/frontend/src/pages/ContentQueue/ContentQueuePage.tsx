@@ -1,20 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Button,
-  Card,
-  Collapse,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
+import { Button, Card, Collapse, Select, Space, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { getReview, listConsoleContentItems } from '../../services/api';
-import type { ContentItem } from '../../types';
+import { getReviews, listConsoleContentItems, publishConsoleContentItem } from '../../services/api';
+import type { ContentItem, ReviewItem } from '../../types';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -30,6 +20,7 @@ export default function ContentQueuePage() {
   const navigate = useNavigate();
   const [items, setItems] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [publishingId, setPublishingId] = useState<number | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<string | undefined>();
   const [reviewStatus, setReviewStatus] = useState<string | undefined>();
   const [sourceType, setSourceType] = useState<string | undefined>();
@@ -56,15 +47,40 @@ export default function ContentQueuePage() {
   }, [pipelineStatus, reviewStatus, sourceType]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const openReview = async (item: ContentItem) => {
     try {
-      const review = await getReview(item.id);
+      const reviewList = await getReviews({ page: 1, page_size: 100, content_item_id: item.id });
+      const review = (reviewList.items || []).find((entry: ReviewItem) => entry.content_item_id === item.id);
+      if (!review) {
+        message.warning('未找到对应审核记录');
+        return;
+      }
       navigate('/review-queue', { state: { reviewId: review.id } });
-    } catch {
-      message.warning('未找到对应审核记录');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '加载审核记录失败');
+    }
+  };
+
+  const handlePublish = async (item: ContentItem) => {
+    setPublishingId(item.id);
+    try {
+      const result = await publishConsoleContentItem(item.id, {
+        title: item.rewritten_title || item.title,
+        content: item.rewritten_content || item.processed_content || item.raw_content || undefined,
+        tech_tags: item.tags?.join(','),
+      });
+      message.success(
+        `发布成功。post_id=${result.post_id}，post_path=${result.post_path}，publish_status=${result.publish_status}`,
+        6
+      );
+      await load();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '发布到 Post 失败');
+    } finally {
+      setPublishingId(null);
     }
   };
 
@@ -95,6 +111,13 @@ export default function ContentQueuePage() {
         render: (value: string) => <Tag color={value === 'approved' ? 'green' : 'gold'}>{value}</Tag>,
       },
       {
+        title: '发布状态',
+        dataIndex: 'publish_status',
+        key: 'publish_status',
+        width: 140,
+        render: (value: string) => <Tag color={value === 'published' ? 'blue' : 'default'}>{value}</Tag>,
+      },
+      {
         title: '分数',
         dataIndex: 'score',
         key: 'score',
@@ -111,15 +134,28 @@ export default function ContentQueuePage() {
       {
         title: '操作',
         key: 'actions',
-        width: 140,
+        width: 220,
         render: (_, record) => (
-          <Button size="small" onClick={() => openReview(record)}>
-            去审核
-          </Button>
+          <Space>
+            <Button size="small" onClick={() => void openReview(record)}>
+              去审核
+            </Button>
+            {(record.review_status === 'approved' || record.pipeline_status === 'processed') &&
+            record.publish_status !== 'published' ? (
+              <Button
+                size="small"
+                type="primary"
+                loading={publishingId === record.id}
+                onClick={() => void handlePublish(record)}
+              >
+                发布到 Post
+              </Button>
+            ) : null}
+          </Space>
         ),
       },
     ],
-    []
+    [publishingId]
   );
 
   const sourceTypeOptions = Array.from(new Set(items.map((item) => item.source_type))).map((value) => ({
@@ -138,9 +174,9 @@ export default function ContentQueuePage() {
           <Title level={4} style={{ margin: 0 }}>
             内容列表
           </Title>
-          <Text type="secondary">查看抓取入库内容，按状态筛选并展开查看摘要与改写结果。</Text>
+          <Text type="secondary">查看抓取入库内容，筛选状态，进入审核，或直接发布已审核通过的内容。</Text>
         </div>
-        <Button onClick={load}>刷新</Button>
+        <Button onClick={() => void load()}>刷新</Button>
       </div>
 
       <Card style={{ marginBottom: 16 }}>

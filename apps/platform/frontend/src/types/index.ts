@@ -236,6 +236,30 @@ export interface TriggerFetchPayload {
   dry_run?: boolean;
 }
 
+export interface ConsoleSourceRunResult {
+  fetch_run_id: number;
+  task_id?: string;
+  trace_id?: string;
+  status: string;
+}
+
+export interface ProcessFetchRunPayload {
+  limit?: number;
+  source_type?: string;
+  filter_config?: Record<string, unknown>;
+  process_options?: Record<string, unknown>;
+}
+
+export interface ProcessFetchRunResult {
+  fetch_run_id: number;
+  task_id?: string;
+  trace_id?: string;
+  status: string;
+  review_status: string;
+  review_queue_path: string;
+  next_action: string;
+}
+
 export interface SourceSubscriptionPayload {
   source_type: string;
   source_name: string;
@@ -250,6 +274,20 @@ export interface ReviewApprovePayload {
   reviewer?: string;
   edited_title?: string;
   edited_content?: string;
+}
+
+export interface ReviewApproveResult extends ReviewItem {
+  publish_status?: string;
+  publish_path?: string;
+  next_action?: string;
+}
+
+export interface ConsolePublishResult {
+  content_item: ContentItem;
+  post_id: number;
+  post_path: string;
+  publish_status: string;
+  next_action: string;
 }
 
 export interface ApiResponse<T> {

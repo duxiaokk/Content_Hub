@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, Card, Col, Row, Select, Space, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { listFetchRuns, listSourceConfigs } from '../../services/api';
+import { listFetchRuns, listSourceConfigs, processFetchRun } from '../../services/api';
 import type { FetchRun, SourceConfig } from '../../types';
 
 const { Title, Text } = Typography;
@@ -16,9 +17,11 @@ const statusColors: Record<string, string> = {
 };
 
 export default function FetchRunsPage() {
+  const navigate = useNavigate();
   const [items, setItems] = useState<FetchRun[]>([]);
   const [sources, setSources] = useState<SourceConfig[]>([]);
   const [loading, setLoading] = useState(false);
+  const [processingId, setProcessingId] = useState<number | null>(null);
   const [sourceId, setSourceId] = useState<number | undefined>(undefined);
   const [status, setStatus] = useState<string | undefined>(undefined);
 
@@ -42,8 +45,27 @@ export default function FetchRunsPage() {
   }, [sourceId, status]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
+
+  const handleProcessRun = async (item: FetchRun) => {
+    setProcessingId(item.id);
+    try {
+      const result = await processFetchRun(item.id, {
+        limit: Math.max(item.inserted_count || item.fetched_count || 20, 1),
+        source_type: item.source_type,
+      });
+      message.success(
+        `处理任务已提交。fetch_run_id=${result.fetch_run_id}，task_id=${result.task_id || '-'}，review_status=${result.review_status}，review_queue_path=${result.review_queue_path}，next_action=${result.next_action}`,
+        8
+      );
+      navigate('/review-queue');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '处理抓取结果失败');
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   const columns = useMemo<ColumnsType<FetchRun>>(
     () => [
@@ -81,16 +103,14 @@ export default function FetchRunsPage() {
         title: '统计',
         key: 'counts',
         width: 240,
-        render: (_, record) =>
-          `抓取 ${record.fetched_count} / 新增 ${record.inserted_count} / 去重 ${record.deduped_count}`,
+        render: (_, record) => `抓取 ${record.fetched_count} / 新增 ${record.inserted_count} / 去重 ${record.deduped_count}`,
       },
       {
         title: '开始时间',
         dataIndex: 'started_at',
         key: 'started_at',
         width: 180,
-        render: (value?: string | null) =>
-          value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-',
+        render: (value?: string | null) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-'),
       },
       {
         title: '耗时',
@@ -106,8 +126,26 @@ export default function FetchRunsPage() {
         ellipsis: true,
         render: (value?: string | null) => value || '-',
       },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 180,
+        render: (_, record) =>
+          record.status === 'success' ? (
+            <Button
+              size="small"
+              type="primary"
+              loading={processingId === record.id}
+              onClick={() => void handleProcessRun(record)}
+            >
+              处理本次抓取
+            </Button>
+          ) : (
+            '-'
+          ),
+      },
     ],
-    []
+    [processingId]
   );
 
   return (
@@ -117,10 +155,10 @@ export default function FetchRunsPage() {
           <Title level={4} style={{ margin: 0 }}>
             采集历史
           </Title>
-          <Text type="secondary">查看每次采集任务的提交、状态和结果摘要。</Text>
+          <Text type="secondary">查看每次采集任务的提交、状态和结果摘要，并对成功抓取发起 AI 处理。</Text>
         </Col>
         <Col>
-          <Button onClick={load}>刷新</Button>
+          <Button onClick={() => void load()}>刷新</Button>
         </Col>
       </Row>
 

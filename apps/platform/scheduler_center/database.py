@@ -53,6 +53,20 @@ if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+
+# 补丁 Table._new：防止 import 双加载导致的 Table already defined 错误
+from sqlalchemy import Table as _Table
+
+_orig_table_new = _Table._new
+
+
+def _patched_new(cls, *args, **kw):
+    kw["extend_existing"] = True
+    return _orig_table_new(*args, **kw)
+
+
+_Table._new = classmethod(_patched_new)
+
 Base = declarative_base()
 
 

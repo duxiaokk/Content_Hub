@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 try:
     from apps.platform import models
 except ImportError:  # pragma: no cover - package import fallback
-    import models
+    from apps.platform import models
 
 
 def get_content_item_by_source(

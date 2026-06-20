@@ -21,7 +21,7 @@ from urllib.parse import urlencode
 
 from sqlalchemy.orm import Session
 
-import models
+from apps.platform import models
 from core.config import settings
 from crud.crud_post import (
     create_post,

@@ -56,16 +56,12 @@ def _load_content_domain_client():
 
 
 def _load_platform_fetch_dependencies():
-    try:
-        import models as platform_models
-        from crud.crud_content_item import create_content_item, get_content_item_by_source, update_content_item
-    except ImportError:  # pragma: no cover - package import fallback
-        from apps.platform import models as platform_models
-        from apps.platform.crud.crud_content_item import (
-            create_content_item,
-            get_content_item_by_source,
-            update_content_item,
-        )
+    from apps.platform import models as platform_models
+    from apps.platform.crud.crud_content_item import (
+        create_content_item,
+        get_content_item_by_source,
+        update_content_item,
+    )
 
     from apps.fetcher_engine.api.models import FetchBatchRequest
     from apps.fetcher_engine.api.service import FetchService
@@ -1094,12 +1090,17 @@ class SchedulerDispatcher:
 
             @staticmethod
             def update_cursor(db: Session, subscription: Any, cursor_value: str) -> None:
-                subscription.last_cursor = cursor_value
-                subscription.last_run_at = _utcnow()
-                db.add(subscription)
-                db.commit()
+                real = db.query(platform_models.SourceConfig).filter(
+                    platform_models.SourceConfig.id == subscription.id
+                ).first()
+                if real is not None:
+                    real.last_cursor = cursor_value
+                    real.last_run_at = _utcnow()
+                    db.add(real)
+                    db.commit()
 
         def _feed_url(subscription: Any) -> str | None:
+            # 优先从 config_json 读取 feed_url / url
             raw_config = str(getattr(subscription, "config_json", "") or "").strip()
             config_data: dict[str, Any] = {}
             if raw_config:
@@ -1110,7 +1111,20 @@ class SchedulerDispatcher:
                 except Exception:
                     config_data = {}
             feed_url = str(config_data.get("feed_url") or config_data.get("url") or "").strip()
-            return feed_url or None
+            if feed_url:
+                return feed_url
+            # fallback：从 channels 字段提取首个 URL（适用于 API 创建的 SourceConfig）
+            channels_raw = str(getattr(subscription, "channels", "") or "").strip()
+            if channels_raw:
+                try:
+                    parsed_channels = json.loads(channels_raw)
+                    if isinstance(parsed_channels, list) and parsed_channels:
+                        first = str(parsed_channels[0]).strip()
+                        if first:
+                            return first
+                except Exception:
+                    pass
+            return None
 
         original_loader = _PlatformFetchSourceRepo.load_subscriptions
 

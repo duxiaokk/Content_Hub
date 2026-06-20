@@ -5,7 +5,7 @@ import logging
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from models import SourceSubscription
+from apps.platform.models import SourceSubscription
 from schemas.source import SourceSubscriptionCreate, SourceSubscriptionUpdate
 
 logger = logging.getLogger(__name__)

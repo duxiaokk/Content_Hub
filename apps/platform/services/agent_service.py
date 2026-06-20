@@ -15,7 +15,7 @@ from typing import AsyncIterable
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from models import Post
+from apps.platform.models import Post
 from services.agent_prompts import (
     BLOG_AGENT_SYSTEM_PROMPT,
     get_analyze_prompt,

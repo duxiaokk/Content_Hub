@@ -1,24 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import {
-  Button,
-  Card,
-  Col,
-  Empty,
-  Input,
-  Row,
-  Space,
-  Table,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
+import { Button, Card, Col, Empty, Input, Row, Space, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { approveReview, archiveReview, getReview, getReviews, rejectReview } from '../../services/api';
-import type { ReviewItem } from '../../types';
+import { approveReview, archiveReview, getReview, getReviews, publishConsoleContentItem, rejectReview } from '../../services/api';
+import type { ReviewApproveResult, ReviewItem } from '../../types';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text, Paragraph, Link } = Typography;
 const { TextArea } = Input;
 
 type LocationState = {
@@ -32,10 +20,12 @@ export default function ReviewQueuePage() {
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(state.reviewId || null);
   const [selected, setSelected] = useState<ReviewItem | null>(null);
+  const [approveResult, setApproveResult] = useState<ReviewApproveResult | null>(null);
   const [editedTitle, setEditedTitle] = useState('');
   const [editedContent, setEditedContent] = useState('');
   const [reviewNote, setReviewNote] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [publishLoading, setPublishLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +49,7 @@ export default function ReviewQueuePage() {
     try {
       const detail = await getReview(reviewId);
       setSelected(detail);
+      setApproveResult(null);
       setEditedTitle(detail.candidate_title || detail.original_title || '');
       setEditedContent(detail.candidate_content || detail.summary || detail.original_content || '');
       setReviewNote(detail.review_note || '');
@@ -68,28 +59,30 @@ export default function ReviewQueuePage() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   useEffect(() => {
-    loadSelected(selectedId);
+    void loadSelected(selectedId);
   }, [loadSelected, selectedId]);
 
   const handleApprove = async () => {
     if (!selected) return;
     setActionLoading(true);
     try {
-      await approveReview(selected.id, {
+      const result = await approveReview(selected.id, {
         reviewer: 'admin',
         edited_title: editedTitle || undefined,
         edited_content: editedContent || undefined,
       });
-      message.success('审核已通过');
-      setSelected(null);
-      setSelectedId(null);
+      setApproveResult(result);
+      message.success(
+        `审核已通过。publish_status=${result.publish_status || '-'}，publish_path=${result.publish_path || '-'}，next_action=${result.next_action || '-'}`,
+        6
+      );
       await load();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '通过失败');
+      message.error(error instanceof Error ? error.message : '审核通过失败');
     } finally {
       setActionLoading(false);
     }
@@ -124,6 +117,31 @@ export default function ReviewQueuePage() {
       message.error(error instanceof Error ? error.message : '归档失败');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    const contentItemId = approveResult?.content_item_id || selected?.content_item_id;
+    if (!contentItemId) return;
+    setPublishLoading(true);
+    try {
+      const result = await publishConsoleContentItem(contentItemId, {
+        title: editedTitle || undefined,
+        content: editedContent || undefined,
+        tech_tags: selected?.tags?.join(','),
+      });
+      message.success(
+        `发布成功。post_id=${result.post_id}，post_path=${result.post_path}，publish_status=${result.publish_status}`,
+        6
+      );
+      setApproveResult(null);
+      setSelected(null);
+      setSelectedId(null);
+      await load();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '发布到 Post 失败');
+    } finally {
+      setPublishLoading(false);
     }
   };
 
@@ -176,9 +194,9 @@ export default function ReviewQueuePage() {
           <Title level={4} style={{ margin: 0 }}>
             审核队列
           </Title>
-          <Text type="secondary">待审核内容采用三栏视图，支持编辑改写稿后通过、驳回和归档。</Text>
+          <Text type="secondary">在这里完成审核，通过后可以直接发布到 Post。</Text>
         </div>
-        <Button onClick={load}>刷新</Button>
+        <Button onClick={() => void load()}>刷新</Button>
       </div>
 
       <Card style={{ marginBottom: 16 }}>
@@ -211,13 +229,13 @@ export default function ReviewQueuePage() {
               title="摘要与改写稿"
               extra={
                 <Space>
-                  <Button danger loading={actionLoading} onClick={handleReject}>
+                  <Button danger loading={actionLoading} onClick={() => void handleReject()}>
                     驳回
                   </Button>
-                  <Button loading={actionLoading} onClick={handleArchive}>
+                  <Button loading={actionLoading} onClick={() => void handleArchive()}>
                     归档
                   </Button>
-                  <Button type="primary" loading={actionLoading} onClick={handleApprove}>
+                  <Button type="primary" loading={actionLoading} onClick={() => void handleApprove()}>
                     通过
                   </Button>
                 </Space>
@@ -230,6 +248,20 @@ export default function ReviewQueuePage() {
               <Input value={editedTitle} onChange={(e) => setEditedTitle(e.target.value)} style={{ margin: '8px 0 16px' }} />
               <Text type="secondary">改写内容</Text>
               <TextArea rows={16} value={editedContent} onChange={(e) => setEditedContent(e.target.value)} />
+              {approveResult?.next_action === 'publish_to_post' ? (
+                <Card size="small" style={{ marginTop: 16 }}>
+                  <Space direction="vertical" size={4}>
+                    <Text strong>下一步：发布到 Post</Text>
+                    <Text type="secondary">publish_status: {approveResult.publish_status || '-'}</Text>
+                    <Text type="secondary">publish_path: {approveResult.publish_path || '-'}</Text>
+                    <Space>
+                      <Button type="primary" loading={publishLoading} onClick={() => void handlePublish()}>
+                        发布到 Post
+                      </Button>
+                    </Space>
+                  </Space>
+                </Card>
+              ) : null}
             </Card>
           </Col>
           <Col span={8}>
@@ -259,6 +291,16 @@ export default function ReviewQueuePage() {
                   <Text type="secondary">来源链接</Text>
                   <div style={{ wordBreak: 'break-all' }}>{selected.source_url || '-'}</div>
                 </div>
+                {approveResult?.publish_path ? (
+                  <div>
+                    <Text type="secondary">发布入口</Text>
+                    <div>
+                      <Link href={approveResult.publish_path} target="_blank">
+                        {approveResult.publish_path}
+                      </Link>
+                    </div>
+                  </div>
+                ) : null}
                 <div>
                   <Text type="secondary">审核备注</Text>
                   <TextArea rows={6} value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="驳回时填写原因" />

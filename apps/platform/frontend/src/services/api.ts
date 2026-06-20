@@ -5,6 +5,8 @@ import type {
   ApiResponse,
   Comment,
   ContentItem,
+  ConsolePublishResult,
+  ConsoleSourceRunResult,
   CreateCommentRequest,
   CreatePostRequest,
   DigestReport,
@@ -14,8 +16,11 @@ import type {
   OrchestrationRun,
   PaginatedResponse,
   Post,
+  ProcessFetchRunPayload,
+  ProcessFetchRunResult,
   RegisterRequest,
   ReviewApprovePayload,
+  ReviewApproveResult,
   ReviewItem,
   SchedulerTask,
   SourceConfig,
@@ -252,10 +257,8 @@ export async function updateSourceConfig(id: number, data: Partial<SourceConfigP
 export async function triggerSourceRun(
   id: number,
   data: TriggerFetchPayload
-): Promise<{ fetch_run_id: number; task_id?: string; trace_id?: string; status: string }> {
-  const res = await apiClient.post<
-    ApiResponse<{ fetch_run_id: number; task_id?: string; trace_id?: string; status: string }>
-  >(`/console/sources/${id}/run`, data);
+): Promise<ConsoleSourceRunResult> {
+  const res = await apiClient.post<ApiResponse<ConsoleSourceRunResult>>(`/console/sources/${id}/run`, data);
   return res.data.data;
 }
 
@@ -267,6 +270,23 @@ export async function listFetchRuns(
   const res = await apiClient.get<ApiResponse<PaginatedResponse<FetchRun>>>('/console/fetch-runs', {
     params: { page, page_size: pageSize, ...params },
   });
+  return res.data.data;
+}
+
+export async function processFetchRun(
+  fetchRunId: number,
+  data?: ProcessFetchRunPayload
+): Promise<ProcessFetchRunResult> {
+  const payload: ProcessFetchRunPayload = {
+    limit: data?.limit ?? 20,
+    source_type: data?.source_type,
+    filter_config: data?.filter_config ?? {},
+    process_options: data?.process_options ?? {},
+  };
+  const res = await apiClient.post<ApiResponse<ProcessFetchRunResult>>(
+    `/console/fetch-runs/${fetchRunId}/process`,
+    payload
+  );
   return res.data.data;
 }
 
@@ -299,8 +319,8 @@ export async function rejectConsoleContentItem(id: number, reason?: string): Pro
 export async function publishConsoleContentItem(
   id: number,
   data?: { title?: string; content?: string; tech_tags?: string }
-): Promise<{ content_item: ContentItem; post_id: number }> {
-  const res = await apiClient.post<ApiResponse<{ content_item: ContentItem; post_id: number }>>(
+): Promise<ConsolePublishResult> {
+  const res = await apiClient.post<ApiResponse<ConsolePublishResult>>(
     `/console/content-items/${id}/publish-to-post`,
     data || {}
   );
@@ -350,12 +370,13 @@ export async function getReview(id: number): Promise<ReviewItem> {
   return res.data.data;
 }
 
-export async function approveReview(id: number, data?: ReviewApprovePayload): Promise<void> {
-  await internalApiClient.post(`/api/internal/content/reviews/${id}/approve`, {
+export async function approveReview(id: number, data?: ReviewApprovePayload): Promise<ReviewApproveResult> {
+  const res = await internalApiClient.post<ApiResponse<ReviewApproveResult>>(`/api/internal/content/reviews/${id}/approve`, {
     reviewer: data?.reviewer || 'admin',
     edited_title: data?.edited_title,
     edited_content: data?.edited_content,
   });
+  return res.data.data;
 }
 
 export async function rejectReview(id: number, note?: string): Promise<void> {

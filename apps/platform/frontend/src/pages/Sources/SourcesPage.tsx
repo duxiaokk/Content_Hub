@@ -1,22 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Button,
-  Card,
-  Drawer,
-  Form,
-  Input,
-  Select,
-  Space,
-  Switch,
-  Table,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
+import { useNavigate } from 'react-router-dom';
+import { Button, Card, Drawer, Form, Input, Select, Space, Switch, Table, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { createSource, getSources, toggleSource, triggerFetch, updateSource } from '../../services/api';
-import type { SourceSubscription, SourceSubscriptionPayload } from '../../types';
+import { createSourceConfig, listSourceConfigs, triggerSourceRun, updateSourceConfig } from '../../services/api';
+import type { SourceConfig, SourceConfigPayload } from '../../types';
 
 const { Title, Text } = Typography;
 
@@ -28,28 +16,35 @@ const sourceTypeOptions = [
   { label: 'Bilibili', value: 'bilibili' },
 ];
 
-const initialValues: SourceSubscriptionPayload = {
+const initialValues: SourceConfigPayload = {
+  name: '',
   source_type: 'rss',
-  source_name: '',
-  account_identifier: '',
-  feed_url: '',
-  schedule_expression: '',
-  category: '',
-  default_tags: '',
+  enabled: true,
+  channels: [],
+  keywords: [],
+  lookback_hours: 24,
+  item_limit: 20,
+  dedup_window_hours: 24,
+  config: {},
+};
+
+type SourceFormValues = Omit<SourceConfigPayload, 'config'> & {
+  configText: string;
 };
 
 export default function SourcesPage() {
-  const [items, setItems] = useState<SourceSubscription[]>([]);
+  const navigate = useNavigate();
+  const [items, setItems] = useState<SourceConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editing, setEditing] = useState<SourceSubscription | null>(null);
-  const [form] = Form.useForm<SourceSubscriptionPayload>();
+  const [editing, setEditing] = useState<SourceConfig | null>(null);
+  const [form] = Form.useForm<SourceFormValues>();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getSources();
+      const data = await listSourceConfigs();
       setItems(data || []);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载信源失败');
@@ -59,38 +54,61 @@ export default function SourcesPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const openCreate = () => {
     setEditing(null);
-    form.setFieldsValue(initialValues);
+    form.setFieldsValue({
+      ...initialValues,
+      configText: '{}',
+    });
     setDrawerOpen(true);
   };
 
-  const openEdit = (item: SourceSubscription) => {
+  const openEdit = (item: SourceConfig) => {
     setEditing(item);
     form.setFieldsValue({
+      name: item.name,
       source_type: item.source_type,
-      source_name: item.source_name,
-      account_identifier: item.account_identifier || '',
-      feed_url: item.feed_url || '',
-      category: item.category || '',
-      default_tags: item.default_tags || '',
-      schedule_expression: '',
+      enabled: item.enabled,
+      channels: item.channels || [],
+      keywords: item.keywords || [],
+      lookback_hours: item.lookback_hours,
+      item_limit: item.item_limit,
+      dedup_window_hours: item.dedup_window_hours,
+      configText: JSON.stringify(item.config || {}, null, 2),
     });
     setDrawerOpen(true);
   };
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    let config: Record<string, unknown> = {};
+    try {
+      config = values.configText ? (JSON.parse(values.configText) as Record<string, unknown>) : {};
+    } catch {
+      message.error('配置 JSON 格式不正确');
+      return;
+    }
+    const payload: SourceConfigPayload = {
+      name: values.name,
+      source_type: values.source_type,
+      enabled: values.enabled,
+      channels: values.channels,
+      keywords: values.keywords,
+      lookback_hours: Number(values.lookback_hours),
+      item_limit: Number(values.item_limit),
+      dedup_window_hours: Number(values.dedup_window_hours),
+      config,
+    };
     setSubmitting(true);
     try {
       if (editing) {
-        await updateSource(editing.id, values);
+        await updateSourceConfig(editing.id, payload);
         message.success('信源已更新');
       } else {
-        await createSource(values);
+        await createSourceConfig(payload);
         message.success('信源已创建');
       }
       setDrawerOpen(false);
@@ -102,9 +120,9 @@ export default function SourcesPage() {
     }
   };
 
-  const handleToggle = async (item: SourceSubscription, enabled: boolean) => {
+  const handleToggle = async (item: SourceConfig, enabled: boolean) => {
     try {
-      await toggleSource(item.id, enabled);
+      await updateSourceConfig(item.id, { enabled });
       message.success(enabled ? '信源已启用' : '信源已停用');
       await load();
     } catch (error) {
@@ -112,23 +130,27 @@ export default function SourcesPage() {
     }
   };
 
-  const handleTriggerFetch = async (item: SourceSubscription) => {
+  const handleTriggerFetch = async (item: SourceConfig) => {
     try {
-      await triggerFetch(item.id);
-      message.success(`已触发 ${item.source_name} 抓取任务`);
+      const result = await triggerSourceRun(item.id, {
+        lookback_hours: item.lookback_hours,
+        item_limit: item.item_limit,
+      });
+      message.success(`已提交抓取，fetch_run_id=${result.fetch_run_id}。请到“采集历史”查看执行情况。`, 5);
+      navigate('/fetch-runs');
     } catch (error) {
       message.error(error instanceof Error ? error.message : '触发抓取失败');
     }
   };
 
-  const columns = useMemo<ColumnsType<SourceSubscription>>(
+  const columns = useMemo<ColumnsType<SourceConfig>>(
     () => [
       {
         title: '信源',
-        key: 'source_name',
+        key: 'name',
         render: (_, record) => (
           <Space direction="vertical" size={0}>
-            <Text strong>{record.source_name}</Text>
+            <Text strong>{record.name}</Text>
             <Text type="secondary">{record.source_type}</Text>
           </Space>
         ),
@@ -139,20 +161,21 @@ export default function SourcesPage() {
         key: 'enabled',
         width: 100,
         render: (value: boolean, record) => (
-          <Switch checked={value} onChange={(checked) => handleToggle(record, checked)} />
+          <Switch checked={value} onChange={(checked) => void handleToggle(record, checked)} />
         ),
       },
       {
-        title: '分类',
-        dataIndex: 'category',
-        key: 'category',
-        width: 140,
-        render: (value?: string) => value || '-',
+        title: '渠道',
+        dataIndex: 'channels',
+        key: 'channels',
+        width: 180,
+        render: (value?: string[]) => (value && value.length ? value.join(', ') : '-'),
       },
       {
-        title: '账号 / Feed',
-        key: 'account_identifier',
-        render: (_, record) => record.account_identifier || record.feed_url || '-',
+        title: '关键词',
+        dataIndex: 'keywords',
+        key: 'keywords',
+        render: (value?: string[]) => (value && value.length ? value.join(', ') : '-'),
       },
       {
         title: '游标',
@@ -160,14 +183,22 @@ export default function SourcesPage() {
         key: 'last_cursor',
         width: 220,
         ellipsis: true,
-        render: (value?: string) => value || '-',
+        render: (value?: SourceConfig['last_cursor']) =>
+          value === null || value === undefined ? '-' : typeof value === 'string' ? value : JSON.stringify(value),
+      },
+      {
+        title: '最近运行',
+        dataIndex: 'last_run_at',
+        key: 'last_run_at',
+        width: 180,
+        render: (value?: string | null) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-'),
       },
       {
         title: '更新时间',
         dataIndex: 'updated_at',
         key: 'updated_at',
         width: 180,
-        render: (value?: string) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-'),
+        render: (value?: string | null) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-'),
       },
       {
         title: '操作',
@@ -178,7 +209,7 @@ export default function SourcesPage() {
             <Button size="small" onClick={() => openEdit(record)}>
               编辑
             </Button>
-            <Button size="small" type="primary" onClick={() => handleTriggerFetch(record)}>
+            <Button size="small" type="primary" onClick={() => void handleTriggerFetch(record)}>
               手动抓取
             </Button>
           </Space>
@@ -195,10 +226,10 @@ export default function SourcesPage() {
           <Title level={4} style={{ margin: 0 }}>
             信源管理
           </Title>
-          <Text type="secondary">查看、启停和新增信源，并手动触发抓取。</Text>
+          <Text type="secondary">查看、启停和新增信源，并直接提交抓取任务。</Text>
         </div>
         <Space>
-          <Button onClick={load}>刷新</Button>
+          <Button onClick={() => void load()}>刷新</Button>
           <Button type="primary" onClick={openCreate}>
             新增信源
           </Button>
@@ -217,33 +248,54 @@ export default function SourcesPage() {
         extra={
           <Space>
             <Button onClick={() => setDrawerOpen(false)}>取消</Button>
-            <Button type="primary" loading={submitting} onClick={handleSubmit}>
+            <Button type="primary" loading={submitting} onClick={() => void handleSubmit()}>
               保存
             </Button>
           </Space>
         }
       >
-        <Form form={form} layout="vertical" initialValues={initialValues}>
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{
+            ...initialValues,
+            configText: '{}',
+          }}
+        >
           <Form.Item name="source_type" label="来源类型" rules={[{ required: true, message: '请选择来源类型' }]}>
-            <Select options={sourceTypeOptions} disabled={Boolean(editing)} />
+            <Select options={sourceTypeOptions} />
           </Form.Item>
-          <Form.Item name="source_name" label="信源名称" rules={[{ required: true, message: '请输入信源名称' }]}>
+          <Form.Item name="name" label="信源名称" rules={[{ required: true, message: '请输入信源名称' }]}>
             <Input placeholder="例如：Tech Radar RSS" />
           </Form.Item>
-          <Form.Item name="account_identifier" label="账号标识">
-            <Input placeholder="例如：openai / python" />
+          <Form.Item name="channels" label="渠道">
+            <Select mode="tags" tokenSeparators={[',']} placeholder="例如：web, rss" />
           </Form.Item>
-          <Form.Item name="feed_url" label="Feed URL">
-            <Input placeholder="例如：https://example.com/feed.xml" />
+          <Form.Item name="keywords" label="关键词">
+            <Select mode="tags" tokenSeparators={[',']} placeholder="例如：ai, llm, tooling" />
           </Form.Item>
-          <Form.Item name="category" label="分类">
-            <Input placeholder="例如：AI / Backend" />
+          <Form.Item name="lookback_hours" label="回看小时数" rules={[{ required: true, message: '请输入回看小时数' }]}>
+            <Input type="number" min={1} max={720} />
           </Form.Item>
-          <Form.Item name="default_tags" label="默认标签">
-            <Input placeholder="例如：ai, llm, tooling" />
+          <Form.Item name="item_limit" label="抓取条数" rules={[{ required: true, message: '请输入抓取条数' }]}>
+            <Input type="number" min={1} max={500} />
           </Form.Item>
-          <Form.Item name="schedule_expression" label="调度表达式">
-            <Input placeholder="可选，后端当前未在更新接口持久化" />
+          <Form.Item
+            name="dedup_window_hours"
+            label="去重窗口小时数"
+            rules={[{ required: true, message: '请输入去重窗口小时数' }]}
+          >
+            <Input type="number" min={1} max={720} />
+          </Form.Item>
+          <Form.Item name="enabled" label="启用" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name="configText"
+            label="配置 JSON"
+            tooltip="按不同 source_type 填写实际抓取参数，例如 feed_url、subreddit、username 等。"
+          >
+            <Input.TextArea rows={8} placeholder={'{\n  "feed_url": "https://example.com/feed.xml"\n}'} />
           </Form.Item>
         </Form>
       </Drawer>

@@ -56,7 +56,7 @@ async def health_check():
 @router.get("/stats", response_model=ApiResponse)
 async def platform_stats(db: Session = Depends(get_db), _admin: str = Depends(require_admin)):
     """平台统计信息（需管理员权限）。"""
-    from models import Comment, Post, User
+    from apps.platform.models import Comment, Post, User
 
     post_count = db.query(Post).filter(Post.deleted_at.is_(None)).count()
     user_count = db.query(User).count()
@@ -79,7 +79,7 @@ async def list_users(
     _admin: str = Depends(require_admin),
 ):
     """用户列表（需管理员权限）。"""
-    from models import User
+    from apps.platform.models import User
     from core.permissions import is_admin_username
 
     page = max(1, int(page))

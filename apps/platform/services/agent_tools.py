@@ -12,7 +12,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from models import Comment, Post
+from apps.platform.models import Comment, Post
 
 
 def _count_comments_for_post(db: Session, post_id: int) -> int:

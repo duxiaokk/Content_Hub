@@ -83,7 +83,7 @@ async def list_posts(
     page_size: Annotated[int, Query(ge=1, le=50)] = 20,
 ):
     """文章列表（分页）。"""
-    from models import Post
+    from apps.platform.models import Post
 
     total = db.query(Post).filter(Post.deleted_at.is_(None)).count()
     posts = (
@@ -159,7 +159,7 @@ async def update_existing_post(
     db: Session = Depends(get_db),
 ):
     """更新文章（管理员）。"""
-    from models import Post
+    from apps.platform.models import Post
 
     username = await get_current_user(request)
     if not username or not is_admin_username(username):

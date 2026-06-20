@@ -156,7 +156,7 @@ async def get_me(request: Request, db: Session = Depends(get_db)):
         return error(ErrorCode.UNAUTHORIZED, "未登录")
 
     # 查找用户获取邮箱和头像
-    from models import User
+    from apps.platform.models import User
     user = db.query(User).filter(User.username == username).first()
 
     role = "admin" if is_admin_username(username) else "user"

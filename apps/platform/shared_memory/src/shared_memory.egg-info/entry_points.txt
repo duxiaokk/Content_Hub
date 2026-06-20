@@ -1,2 +1,0 @@
-[console_scripts]
-shared-memory = shared_memory.cli:main

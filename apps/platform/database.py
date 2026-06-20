@@ -55,6 +55,31 @@ engine = create_engine(SQLALCHEMY_DATABASE_URL, **_engine_kwargs)  # type: ignor
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# 自定义基类：防止 import 双加载导致的 Table already defined 错误
+from sqlalchemy import Table as _Table
+
+_orig_table_new = _Table._new
+
+
+def _patched_new(cls, *args, **kw):
+    table_name = args[0] if args else "?"
+    kw["extend_existing"] = True
+    try:
+        result = _orig_table_new(*args, **kw)
+        if table_name == "posts":
+            print(f"[DB_PATCH] posts: success, result={result}", flush=True)
+        return result
+    except Exception as e:
+        if table_name == "posts":
+            import traceback
+            print(f"[DB_PATCH] posts: FAILED: {e}", flush=True)
+            traceback.print_exc()
+        raise
+
+
+_Table._new = classmethod(_patched_new)
+print("[DB_PATCH] Table._new patched with extend_existing=True", flush=True)
+
 Base = declarative_base()
 
 

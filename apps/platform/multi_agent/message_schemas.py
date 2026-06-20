@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 
 @dataclass(slots=True)
 class AgentMessage:
@@ -55,12 +57,11 @@ class AgentMessage:
         )
 
 
-@dataclass(slots=True)
-class OrchestrationRequest:
+class OrchestrationRequest(BaseModel):
     """用户提交给 Orchestrator 的请求。"""
 
     intent: str
-    context: dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = Field(default_factory=dict)
     trace_id: str | None = None
 
 

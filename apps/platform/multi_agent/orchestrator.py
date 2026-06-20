@@ -63,10 +63,11 @@ class Orchestrator:
         """执行用户意图，返回最终结果。"""
         trace_id = str(uuid.uuid4())
         start_time = time.time()
+        self._context = context or {}
         logger.info("[Orchestrator] trace_id=%s intent=%s", trace_id, intent)
 
         # Step 1: Planner 拆解意图
-        plan = await self._call_planner(intent, trace_id, context)
+        plan = await self._call_planner(intent, trace_id, self._context)
         if not plan or not plan.get("tasks"):
             logger.warning("[Orchestrator] Planner returned empty plan, trace_id=%s", trace_id)
             return OrchestrationResult(
@@ -195,6 +196,11 @@ class Orchestrator:
         task_key = task["task_key"]
         task_type = task["task_type"]
         input_payload = dict(task.get("input_payload", {}))
+
+        # 注入用户 context 中的额外参数（如 keyword, cookie 等）
+        for key, value in (getattr(self, "_context", {}) or {}).items():
+            if key not in input_payload and value is not None:
+                input_payload[key] = value
 
         # 注入前置任务的结果作为上下文
         for dep_key in task.get("depends_on", []):
@@ -341,8 +347,16 @@ class Orchestrator:
         intent_lower = intent.lower()
         tasks: list[dict] = []
 
-        # 检测关键词，生成简单链式计划
-        if any(k in intent_lower for k in ["抓取", "fetch", "获取", "采集", "collect"]):
+        # B 站特殊意图检测
+        is_bilibili = any(k in intent_lower for k in ["b站", "bilibili", "哔哩哔哩", "up主", "uid"])
+        if is_bilibili:
+            tasks.append({
+                "task_key": "fetch",
+                "task_type": "bilibili.fetch.user",
+                "description": "Fetch Bilibili user videos",
+                "input_payload": {"intent": intent},
+            })
+        elif any(k in intent_lower for k in ["抓取", "fetch", "获取", "采集", "collect"]):
             tasks.append({
                 "task_key": "fetch",
                 "task_type": "tool.call",

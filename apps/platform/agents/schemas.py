@@ -66,6 +66,9 @@ class PlannerTask(BaseModel):
     max_retries: int = 2
     retry_delay_seconds: float = 3.0
     timeout_seconds: float | None = None
+    condition: str | None = None
+    branch_on: dict[str, str] = Field(default_factory=dict)
+    sub_tasks: list["PlannerTask"] = Field(default_factory=list)
 
 
 class PlannerOutput(BaseModel):

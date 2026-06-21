@@ -85,6 +85,67 @@ class WorkflowEngineService:
             source="workflow_engine",
         )
 
+    @staticmethod
+    def _build_review_failure_observations(quality_gate_results: list[dict[str, Any]]) -> dict[str, Any]:
+        counts: dict[str, int] = {}
+        for result in quality_gate_results:
+            quality_gate = result.get("quality_gate") or {}
+            checks = list(quality_gate.get("checks") or [])
+            for check in checks:
+                if bool(check.get("passed")):
+                    continue
+                name = str(check.get("name") or "unknown")
+                counts[name] = counts.get(name, 0) + 1
+        top_reasons = [
+            {"reason": reason, "count": count}
+            for reason, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)
+        ]
+        return {"top_reasons": top_reasons[:5], "counts": counts}
+
+    @staticmethod
+    def _build_radar_observations(
+        *,
+        rows: list[ContentItem],
+        filtered_count: int,
+        review_items: list[ReviewItem],
+        quality_gate_results: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        fetched_count = len(rows)
+        populated_count = sum(1 for row in rows if str(row.raw_content or "").strip())
+        coverage_ratio = round(populated_count / fetched_count, 4) if fetched_count else 0.0
+        process_scores = [float(item.score or 0.0) for item in review_items if item.score is not None]
+        return {
+            "fetch_quality": {
+                "fetched_count": fetched_count,
+                "content_populated_count": populated_count,
+                "coverage_ratio": coverage_ratio,
+                "filtered_count": filtered_count,
+                "quality_score": coverage_ratio,
+            },
+            "tool_hit_rate": {"attempts": 0, "hits": 0, "hit_rate": 0.0},
+            "process_quality": {
+                "processed_count": len(review_items),
+                "scored_count": len(process_scores),
+                "average_quality_score": round(sum(process_scores) / len(process_scores), 4) if process_scores else 0.0,
+            },
+            "publish_success_rate": {},
+            "review_failure_reasons": WorkflowEngineService._build_review_failure_observations(quality_gate_results),
+        }
+
+    @staticmethod
+    def _build_next_run_suggestions(observations: dict[str, Any]) -> list[dict[str, Any]]:
+        suggestions: list[dict[str, Any]] = []
+        fetch_quality = dict(observations.get("fetch_quality") or {})
+        process_quality = dict(observations.get("process_quality") or {})
+        review_failures = dict(observations.get("review_failure_reasons") or {})
+        if float(fetch_quality.get("quality_score") or 0.0) < 0.55:
+            suggestions.append({"action": "add_tool_context", "reason": "low fetch quality"})
+        if float(process_quality.get("average_quality_score") or 0.0) < 0.7:
+            suggestions.append({"action": "tighten_rewrite_quality", "reason": "low process quality score"})
+        if review_failures.get("top_reasons"):
+            suggestions.append({"action": "enable_quality_gate", "reason": "review failures detected"})
+        return suggestions
+
     async def run_radar_pipeline(self, request: dict[str, Any]) -> dict[str, Any]:
         db: Session = SessionLocal()
         try:
@@ -232,9 +293,16 @@ class WorkflowEngineService:
                             auto_approve=bool(review_options.get("auto_approve")),
                             auto_reject=bool(review_options.get("auto_reject", True)),
                         )
-                    )
+                )
                 trace.log_step_end("quality_gate", status="success", items_out=len(quality_gate_results))
 
+            observations = self._build_radar_observations(
+                rows=rows,
+                filtered_count=len(filter_result.filtered_out),
+                review_items=review_items,
+                quality_gate_results=quality_gate_results,
+            )
+            next_run_suggestions = self._build_next_run_suggestions(observations)
             trace.error_summary = "; ".join(error["error"] for error in errors[:3]) or None
             trace.mark_finished(status="failed" if errors and stop_on_error else "success")
             self._remember_workflow_outcome(
@@ -244,6 +312,15 @@ class WorkflowEngineService:
                 extra={
                     "review_queue_count": len(review_queue_ids),
                     "quality_gate_count": len(quality_gate_results),
+                    "observations": observations,
+                    "reasoning_decisions": [
+                        {
+                            "stage": "publish",
+                            "decision": "enter_quality_gate" if bool(review_options.get("enable_quality_gate")) else "review_queue_only",
+                            "reason": "request review options",
+                        }
+                    ],
+                    "next_run_suggestions": next_run_suggestions,
                 },
             )
             persist_trace(status=trace.status, error_summary=trace.error_summary)
@@ -257,6 +334,8 @@ class WorkflowEngineService:
                 "review_items": [asdict(item) for item in review_items],
                 "review_queue_ids": review_queue_ids,
                 "quality_gate_results": quality_gate_results,
+                "observations": observations,
+                "next_run_suggestions": next_run_suggestions,
                 "errors": errors,
                 "trace_payload": trace.snapshot(),
             }
@@ -336,14 +415,17 @@ class WorkflowEngineService:
             )
         )
         errors = list(result.get("errors") or [])
+        trace_snapshot = dict(result.get("trace") or {})
         trace = WorkflowRunTrace(run_id=resolved_run_id, workflow_name=workflow_name)
-        trace.items_total = int(result.get("items_total") or 0)
-        trace.items_succeeded = int(result.get("items_succeeded") or 0)
-        trace.items_failed = int(result.get("items_failed") or len(errors))
-        trace.error_summary = "; ".join(str(error) for error in errors[:3]) or None
-        trace.mark_finished(status="failed" if errors else "success")
+        trace.items_total = int(trace_snapshot.get("items_total") or len(result.get("results") or []))
+        trace.items_succeeded = int(trace_snapshot.get("items_succeeded") or 0)
+        trace.items_failed = int(trace_snapshot.get("items_failed") or len(errors))
+        trace.error_summary = str(trace_snapshot.get("error_summary") or "; ".join(str(error) for error in errors[:3]) or "")
+        trace.mark_finished(status=str(result.get("status") or ("failed" if errors else "success")))
         db: Session = SessionLocal()
         try:
+            observations = dict(result.get("observations") or {})
+            next_run_suggestions = self._build_next_run_suggestions(observations)
             self._remember_workflow_outcome(
                 db,
                 workflow_name=workflow_name,
@@ -351,6 +433,9 @@ class WorkflowEngineService:
                 extra={
                     "node_count": len(graph_nodes),
                     "has_tool_stage": any(node.stage == "tool" for node in graph_nodes),
+                    "observations": observations,
+                    "reasoning_decisions": list(result.get("reasoning_decisions") or []),
+                    "next_run_suggestions": next_run_suggestions,
                 },
             )
         finally:

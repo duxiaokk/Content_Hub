@@ -12,14 +12,20 @@ class RewriteProcessor(BaseProcessor):
 
     async def process(self, content: ContentAsset, context: ProcessContext) -> ProcessResult:
         provider = build_provider(self.config)
+        options = context.options if isinstance(context.options, dict) else {}
         prompt_source = (content.raw_content or "").strip()
         if not prompt_source:
             return ProcessResult(content=content, status="skipped", warnings=["empty raw content"])
 
         system_prompt = str(
-            context.options.get("rewrite_system_prompt")
-            or "你是内容改写助手。请输出中文技术博客风格的标题和正文，保留事实、代码块和关键术语。"
+            options.get("rewrite_system_prompt")
+            or self._build_system_prompt(options)
         )
+        workflow_observations = dict(options.get("workflow_observations") or {})
+        process_quality = dict(workflow_observations.get("process_quality") or {})
+        if float(process_quality.get("average_quality_score") or 1.0) < 0.7:
+            options.setdefault("rewrite_self_critique_rounds", 2)
+            options.setdefault("rewrite_self_critique_threshold", 0.8)
         user_prompt = (
             f"标题：{content.title}\n"
             f"来源：{content.source_type}\n"
@@ -30,30 +36,56 @@ class RewriteProcessor(BaseProcessor):
         )
 
         try:
+            prompt_history: list[str] = []
             rewritten = await self._chat_with_fallback(provider, system_prompt, user_prompt)
+            prompt_history.append(user_prompt)
             rewritten_title, rewritten_content = parse_title_and_content(
                 rewritten,
                 fallback_title=content.title,
                 fallback_content=content.raw_content,
             )
-            critique = await self._critique_rewrite(
-                provider=provider,
-                original=content,
-                rewritten_title=rewritten_title,
-                rewritten_content=rewritten_content,
-            )
-            critique_attempts = 1
+            critique_attempts = 0
+            critique_history: list[dict[str, object]] = []
+            critique = {"score": 0.0, "passed": False, "feedback": "未执行质检"}
+            retry_rounds = max(0, int(options.get("rewrite_self_critique_rounds", 1) or 0))
+            total_rounds = max(1, retry_rounds + 1)
+            threshold = float(options.get("rewrite_self_critique_threshold", 0.75) or 0.75)
 
-            if self._should_retry_with_feedback(context, critique):
-                critique_attempts += 1
-                feedback_prompt = self._build_feedback_prompt(user_prompt, critique["feedback"])
+            for round_index in range(total_rounds):
+                critique_attempts = round_index + 1
+                if options.get("enable_self_critique") is False:
+                    critique = self._heuristic_assessment(content, rewritten_title, rewritten_content)
+                else:
+                    critique = await self._critique_rewrite(
+                        provider=provider,
+                        original=content,
+                        rewritten_title=rewritten_title,
+                        rewritten_content=rewritten_content,
+                    )
+                critique_history.append(
+                    {
+                        "round": round_index + 1,
+                        "score": critique["score"],
+                        "passed": critique["passed"],
+                        "feedback": critique["feedback"],
+                    }
+                )
+                if not self._should_retry_with_feedback(
+                    options=options,
+                    critique=critique,
+                    round_index=round_index,
+                    total_rounds=total_rounds,
+                    threshold=threshold,
+                ):
+                    break
+                feedback_prompt = self._build_feedback_prompt(user_prompt, critique["feedback"], round_index + 1)
                 rewritten = await self._chat_with_fallback(provider, system_prompt, feedback_prompt)
+                prompt_history.append(feedback_prompt)
                 rewritten_title, rewritten_content = parse_title_and_content(
                     rewritten,
                     fallback_title=content.title,
                     fallback_content=content.raw_content,
                 )
-                critique = self._heuristic_assessment(content, rewritten_title, rewritten_content)
 
             processed = clone_content(content)
             processed.title = rewritten_title
@@ -68,6 +100,7 @@ class RewriteProcessor(BaseProcessor):
                     "rewrite_critique_feedback": critique["feedback"],
                     "rewrite_critique_passed": critique["passed"],
                     "rewrite_attempts": critique_attempts,
+                    "rewrite_critique_history": critique_history,
                 }
             )
             return ProcessResult(
@@ -75,9 +108,9 @@ class RewriteProcessor(BaseProcessor):
                 status="processed",
                 cost_tokens=estimate_token_cost(
                     system_prompt,
-                    user_prompt,
+                    "\n\n".join(prompt_history),
                     rewritten,
-                    critique["feedback"],
+                    "\n".join(str(item["feedback"]) for item in critique_history),
                     enabled=self.config.enable_cost_tracking,
                 ),
             )
@@ -157,18 +190,46 @@ class RewriteProcessor(BaseProcessor):
                 parsed["passed"] = False
         return parsed
 
-    def _should_retry_with_feedback(self, context: ProcessContext, critique: dict[str, object]) -> bool:
-        options = context.options if isinstance(context.options, dict) else {}
+    def _should_retry_with_feedback(
+        self,
+        *,
+        options: dict[str, Any],
+        critique: dict[str, object],
+        round_index: int,
+        total_rounds: int,
+        threshold: float,
+    ) -> bool:
         if options.get("enable_self_critique") is False:
             return False
-        max_rounds = int(options.get("rewrite_self_critique_rounds", 1) or 0)
-        return max_rounds > 0 and not bool(critique["passed"])
+        if round_index >= total_rounds - 1:
+            return False
+        score = float(critique.get("score") or 0.0)
+        return (not bool(critique["passed"])) or score < threshold
 
-    def _build_feedback_prompt(self, user_prompt: str, feedback: object) -> str:
+    def _build_feedback_prompt(self, user_prompt: str, feedback: object, round_number: int) -> str:
         return (
             f"{user_prompt}\n\n"
-            "上一版改写未通过质检，请根据以下反馈重新改写，并继续严格输出 Title/Content 格式：\n"
+            f"第 {round_number} 轮改写未通过质检，请根据以下反馈重新改写，并继续严格输出 Title/Content 格式：\n"
             f"{feedback}"
+        )
+
+    @staticmethod
+    def _build_system_prompt(options: dict[str, Any]) -> str:
+        preferences = dict(options.get("rewrite_preferences") or {})
+        style_hints: list[str] = []
+        if preferences.get("voice"):
+            style_hints.append(f"文风偏好：{preferences['voice']}")
+        if preferences.get("tone"):
+            style_hints.append(f"语气偏好：{preferences['tone']}")
+        if preferences.get("length"):
+            style_hints.append(f"篇幅偏好：{preferences['length']}")
+        blocked_tags = preferences.get("blocked_tags")
+        if isinstance(blocked_tags, list) and blocked_tags:
+            style_hints.append(f"避免提及标签：{', '.join(str(tag) for tag in blocked_tags)}")
+        suffix = f"附加要求：{'；'.join(style_hints)}。" if style_hints else ""
+        return (
+            "你是内容改写助手。请输出中文技术博客风格的标题和正文，保留事实、代码块和关键术语。"
+            f"{suffix}"
         )
 
     def _heuristic_assessment(

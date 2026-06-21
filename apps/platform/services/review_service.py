@@ -11,6 +11,7 @@ from agents.base_agent import AgentConfig
 from agents.tool_calling_agent import ToolCallingAgent
 from apps.platform.models import ContentItem, ReviewQueue
 from apps.platform.schemas.review import ReviewApproveRequest, ReviewQueueOut, ReviewRejectRequest
+from apps.platform.services.agent_memory_service import AgentMemoryService
 
 
 def _utcnow() -> datetime:
@@ -73,6 +74,17 @@ class ReviewService:
         self.db.add(review)
         self.db.add(item)
         self.db.commit()
+        self._record_review_memory(
+            item=item,
+            decision="approved",
+            reviewer=data.reviewer,
+            note=review.review_note,
+            metadata={
+                "review_id": int(review.id),
+                "edited_title": review.candidate_title,
+                "edited_content": review.candidate_content,
+            },
+        )
         self.db.refresh(review)
         self.db.refresh(item)
         return self._serialize_review(review, item)
@@ -93,6 +105,13 @@ class ReviewService:
         self.db.add(review)
         self.db.add(item)
         self.db.commit()
+        self._record_review_memory(
+            item=item,
+            decision="rejected",
+            reviewer=data.reviewer,
+            note=data.note,
+            metadata={"review_id": int(review.id)},
+        )
         self.db.refresh(review)
         self.db.refresh(item)
         return self._serialize_review(review, item)
@@ -112,6 +131,13 @@ class ReviewService:
         self.db.add(review)
         self.db.add(item)
         self.db.commit()
+        self._record_review_memory(
+            item=item,
+            decision="archived",
+            reviewer=reviewer,
+            note=review.review_note,
+            metadata={"review_id": int(review.id)},
+        )
         self.db.refresh(review)
         self.db.refresh(item)
         return self._serialize_review(review, item)
@@ -153,6 +179,16 @@ class ReviewService:
         self.db.add(review)
         self.db.add(item)
         self.db.commit()
+        self._record_review_memory(
+            item=item,
+            decision=review.status,
+            reviewer=reviewer,
+            note=review.review_note,
+            metadata={
+                "review_id": int(review.id),
+                "quality_gate": gate,
+            },
+        )
         self.db.refresh(review)
         self.db.refresh(item)
         return self._serialize_review(review, item)
@@ -277,6 +313,36 @@ class ReviewService:
         if tool_result is not None:
             result["tool_result"] = tool_result
         return result
+
+    def _record_review_memory(
+        self,
+        *,
+        item: ContentItem,
+        decision: str,
+        reviewer: str,
+        note: str | None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        AgentMemoryService(self.db).record_review_feedback(
+            content_item_id=int(item.id),
+            decision=decision,
+            reviewer=reviewer,
+            note=note,
+            source_url=item.source_url,
+            workflow_name=self._extract_workflow_name(item),
+            metadata=metadata,
+        )
+
+    @staticmethod
+    def _extract_workflow_name(item: ContentItem) -> str | None:
+        metadata = ReviewService._load_item_metadata(item)
+        workflow_name = metadata.get("workflow_name")
+        if workflow_name is None and isinstance(metadata.get("workflow"), dict):
+            workflow_name = metadata["workflow"].get("name")
+        if workflow_name is None:
+            return None
+        resolved = str(workflow_name).strip()
+        return resolved or None
 
     @staticmethod
     def _resolve_candidate_text(review_value: str | None, fallback_value: str | None) -> str:

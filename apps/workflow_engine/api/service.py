@@ -76,12 +76,9 @@ class WorkflowEngineService:
         }
         if extra:
             payload.update(extra)
-        AgentMemoryService(db).upsert_memory(
-            scope="workflow",
-            scope_key=workflow_name,
-            memory_type="outcome",
-            memory_key="last_run",
-            value=payload,
+        AgentMemoryService(db).record_workflow_outcome(
+            workflow_name=workflow_name,
+            payload=payload,
             source="workflow_engine",
         )
 

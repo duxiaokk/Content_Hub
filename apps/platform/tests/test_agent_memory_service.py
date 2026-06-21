@@ -110,3 +110,79 @@ def test_agent_memory_service_returns_latest_memory_value() -> None:
     assert isinstance(value, dict)
     assert value["success_rate"] == 0.4
     assert value["suggested_limit"] == 8
+
+
+def test_agent_memory_service_can_search_and_merge_preferences() -> None:
+    db = _create_session()
+    service = AgentMemoryService(db)
+    service.upsert_memory(
+        scope="global",
+        scope_key=None,
+        memory_type="preference",
+        memory_key="default_style",
+        value={"tone": "concise"},
+        source="test",
+    )
+    service.upsert_memory(
+        scope="user",
+        scope_key="user-1",
+        memory_type="preference",
+        memory_key="rewrite_style",
+        value={"voice": "technical", "blocked_tags": ["营销"]},
+        source="test",
+    )
+    service.upsert_memory(
+        scope="workflow",
+        scope_key="workflow-a",
+        memory_type="feedback",
+        memory_key="review-note",
+        value={"comment": "需要事实核查"},
+        source="test",
+    )
+
+    results = service.search_memories(keyword="事实核查", scopes=["workflow"], memory_type="feedback")
+    preferences = service.build_rewrite_preferences({"user_id": "user-1"})
+
+    assert len(results) == 1
+    assert results[0]["memory_key"] == "review-note"
+    assert preferences["tone"] == "concise"
+    assert preferences["voice"] == "technical"
+
+
+def test_agent_memory_service_supports_structured_write_helpers() -> None:
+    db = _create_session()
+    service = AgentMemoryService(db)
+
+    service.record_preference(
+        scope="user",
+        scope_key="user-2",
+        preference_key="writing_style",
+        value={"tone": "formal"},
+        source="test",
+    )
+    service.record_manual_feedback(
+        scope="workflow",
+        scope_key="workflow-b",
+        feedback_key="manual-note",
+        value={"comment": "need fact check"},
+        source="test",
+    )
+    service.record_workflow_outcome(
+        workflow_name="workflow-b",
+        payload={"success_rate": 0.9, "items_total": 10},
+        source="test",
+    )
+
+    preferences = service.build_rewrite_preferences({"user_id": "user-2"})
+    outcome = service.get_memory_value(
+        scope="workflow",
+        scope_key="workflow-b",
+        memory_type="outcome",
+        memory_key="last_run",
+    )
+    feedback_results = service.search_memories(keyword="fact check", scopes=["workflow"], memory_type="feedback")
+
+    assert preferences["tone"] == "formal"
+    assert outcome["items_total"] == 10
+    assert len(feedback_results) == 1
+    assert feedback_results[0]["memory_key"] == "manual-note"

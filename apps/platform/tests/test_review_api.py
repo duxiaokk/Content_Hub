@@ -126,8 +126,10 @@ def test_approve_review_updates_review_and_content_item() -> None:
     db = session_factory()
     review = db.query(ReviewQueue).filter(ReviewQueue.id == review_id).first()
     item = db.query(ContentItem).filter(ContentItem.id == review.content_item_id).first()
+    memory = db.query(AgentMemory).filter(AgentMemory.scope == "review", AgentMemory.scope_key == str(item.id)).first()
     assert review.status == "approved"
     assert item.review_status == "approved"
+    assert memory is not None
     db.close()
 
 
@@ -143,6 +145,12 @@ def test_reject_review_persists_note() -> None:
     body = response.json()
     assert body["data"]["status"] == "rejected"
     assert body["data"]["review_note"] == "needs more edits"
+
+    db = session_factory()
+    memory = db.query(AgentMemory).filter(AgentMemory.scope == "review").first()
+    assert memory is not None
+    assert "needs more edits" in memory.value_json
+    db.close()
 
 
 def test_archive_review_updates_status() -> None:
@@ -170,6 +178,12 @@ def test_auto_review_runs_quality_gate_and_keeps_pending_when_no_auto_decision()
     assert body["data"]["quality_gate"]["score"] > 0
     assert body["data"]["quality_gate"]["tool_result"]["success"] is True
     assert body["data"]["review_note"].startswith("quality_gate:")
+
+    db = session_factory()
+    memory = db.query(AgentMemory).filter(AgentMemory.scope == "review").first()
+    assert memory is not None
+    assert "quality_gate" in memory.value_json
+    db.close()
 
 
 def test_auto_review_rejects_low_quality_candidate() -> None:

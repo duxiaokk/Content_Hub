@@ -176,3 +176,86 @@ def test_workflow_planning_service_enables_quality_gate_from_observations(monkey
     assert payload["publish_options"]["enable_quality_gate"] is True
     assert payload["process_options"]["rewrite_self_critique_rounds"] == 2
     assert plan.metadata["next_run_suggestions"]
+
+
+def test_workflow_planning_service_supports_tool_plan_context() -> None:
+    service = WorkflowPlanningService()
+
+    plan, payload = service.plan_workflow(
+        intent="extract search translate summarize",
+        context={
+            "workflow_name": "content.workflow.planned",
+            "tool_plan": {
+                "steps": [
+                    {
+                        "id": "extract_step",
+                        "tool_name": "extract",
+                        "input_template": {"text": "{context.fetched_items.0.title}"},
+                        "output_key": "extracted",
+                    },
+                    {
+                        "id": "search_step",
+                        "tool_name": "search",
+                        "input_template": {"query": "{outputs.extracted.query}"},
+                        "output_key": "searched",
+                        "max_retries": 2,
+                    },
+                ]
+            },
+            "tool_result_key": "tool_chain",
+        },
+    )
+
+    tool_nodes = [node for node in payload["nodes"] if node["stage"] == "tool"]
+    assert tool_nodes
+    assert tool_nodes[0]["options"]["result_key"] == "tool_chain"
+    assert tool_nodes[0]["options"]["tool_plan"]["steps"][1]["max_retries"] == 2
+    assert any(task.task_type == "tool.execute" for task in plan.tasks)
+
+
+def test_workflow_planning_service_maps_planner_tool_plan(monkeypatch) -> None:
+    def fake_decompose(self, *, intent, context, constraints):  # noqa: ANN001
+        return {
+            "plan_id": "planner-tool-plan",
+            "tasks": [
+                {"task_key": "fetch", "task_type": "workflow.fetch", "input_payload": {"fetcher_name": "github_trending"}},
+                {
+                    "task_key": "tool_chain",
+                    "task_type": "tool.execute",
+                    "depends_on": ["fetch"],
+                    "input_payload": {
+                        "tool_plan": {
+                            "steps": [
+                                {
+                                    "id": "extract_step",
+                                    "tool_name": "extract",
+                                    "input_template": {"text": "{context.fetched_items.0.title}"},
+                                    "output_key": "extracted",
+                                },
+                                {
+                                    "id": "search_step",
+                                    "tool_name": "search",
+                                    "input_template": {"query": "{outputs.extracted.query}"},
+                                    "output_key": "searched",
+                                    "on_error": "fallback",
+                                },
+                            ]
+                        },
+                        "result_key": "tool_chain",
+                    },
+                },
+            ],
+        }
+
+    monkeypatch.setattr(WorkflowPlanningService, "_decompose_with_planner", fake_decompose)
+
+    service = WorkflowPlanningService()
+    plan, payload = service.plan_workflow(
+        intent="extract search translate summarize",
+        context={"workflow_name": "content.workflow.planned"},
+    )
+
+    assert plan.plan_id == "planner-tool-plan"
+    assert payload["nodes"][1]["stage"] == "tool"
+    assert payload["nodes"][1]["options"]["result_key"] == "tool_chain"
+    assert payload["nodes"][1]["options"]["tool_plan"]["steps"][1]["on_error"] == "fallback"

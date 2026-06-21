@@ -268,3 +268,200 @@ def test_dag_workflow_runner_emits_reasoning_decisions() -> None:
     assert result["reasoning_decisions"][0]["stage"] == "process"
     assert result["reasoning_decisions"][0]["decision"] == "supplement_tooling"
     assert result["reasoning_decisions"][1]["stage"] == "publish"
+
+
+def test_dag_workflow_runner_executes_tool_plan_chain() -> None:
+    registry = PluginRegistry()
+    registry.register_fetcher(StubFetcher())
+    processor = StubProcessor()
+    registry.register_processor(processor)
+    registry.register_publisher(StubPublisher())
+
+    runner = DagWorkflowRunner(registry)
+    runner._linear_runner.repository = StubRepository()
+    calls: list[dict[str, object]] = []
+
+    async def fake_invoke_tool_agent(*, run_id, task_type, payload, options):  # noqa: ANN001
+        tool_call = payload["tool_calls"][0]
+        tool_name = tool_call["tool_name"]
+        parameters = tool_call["parameters"]
+        calls.append({"run_id": run_id, "task_type": task_type, "parameters": parameters, "options": options})
+        if tool_name == "extract":
+            return {"result": {"query": f"topic:{parameters['text']}"}}
+        if tool_name == "search":
+            return {"result": {"snippet": f"found {parameters['query']}"}}
+        if tool_name == "translate":
+            return {"result": {"translated_text": f"ZH {parameters['text']}"}}
+        raise AssertionError(f"unexpected tool {tool_name}")
+
+    runner._invoke_tool_agent = fake_invoke_tool_agent  # type: ignore[method-assign]
+    result = asyncio.run(
+        runner.run(
+            WorkflowGraphSpec(
+                run_id="run-tool-plan-1",
+                workflow_name="content.workflow.run",
+                source_name="stub",
+                nodes=[
+                    WorkflowNodeSpec(node_id="fetch", stage="fetch", component_name="stub-fetcher"),
+                    WorkflowNodeSpec(
+                        node_id="enrich",
+                        stage="tool",
+                        component_name="tool-calling-agent",
+                        depends_on=["fetch"],
+                        options={
+                            "result_key": "tool_chain",
+                            "tool_plan": {
+                                "steps": [
+                                    {
+                                        "id": "extract_step",
+                                        "tool_name": "extract",
+                                        "input_template": {"text": "{context.fetched_items.0.title}"},
+                                        "output_key": "extracted",
+                                    },
+                                    {
+                                        "id": "search_step",
+                                        "tool_name": "search",
+                                        "input_template": {"query": "{outputs.extracted.query}"},
+                                        "output_key": "searched",
+                                    },
+                                    {
+                                        "id": "translate_step",
+                                        "tool_name": "translate",
+                                        "input_template": {"text": "{outputs.searched.snippet}"},
+                                        "output_key": "translated",
+                                    },
+                                ]
+                            },
+                        },
+                    ),
+                    WorkflowNodeSpec(
+                        node_id="process",
+                        stage="process",
+                        component_name="stub-processor",
+                        depends_on=["fetch", "enrich"],
+                    ),
+                    WorkflowNodeSpec(
+                        node_id="publish",
+                        stage="publish",
+                        component_name="stub-publisher",
+                        depends_on=["process"],
+                    ),
+                ],
+            )
+        )
+    )
+
+    assert result["status"] == "succeeded"
+    assert len(calls) == 3
+    assert calls[0]["parameters"]["text"] == "Item 1"
+    assert calls[1]["parameters"]["query"] == "topic:Item 1"
+    assert processor.last_options is not None
+    assert processor.last_options["tool_results"]["tool_chain"]["outputs"]["translated"]["translated_text"] == "ZH found topic:Item 1"
+
+
+def test_dag_workflow_runner_retries_tool_plan_step() -> None:
+    registry = PluginRegistry()
+    runner = DagWorkflowRunner(registry)
+    attempts = {"search": 0}
+
+    async def fake_invoke_tool_agent(*, run_id, task_type, payload, options):  # noqa: ANN001
+        _ = run_id, task_type, options
+        tool_call = payload["tool_calls"][0]
+        attempts["search"] += 1
+        if attempts["search"] == 1:
+            raise RuntimeError("temporary failure")
+        return {"result": {"snippet": tool_call["parameters"]["query"]}}
+
+    runner._invoke_tool_agent = fake_invoke_tool_agent  # type: ignore[method-assign]
+    tool_result = asyncio.run(
+        runner._execute_tool_plan(  # type: ignore[attr-defined]  # noqa: SLF001
+            spec=WorkflowGraphSpec(
+                run_id="retry-run",
+                workflow_name="content.workflow.run",
+                source_name="stub",
+                nodes=[],
+            ),
+            node=WorkflowNodeSpec(node_id="tool", stage="tool", component_name="tool-calling-agent"),
+            options={
+                "tool_plan": {
+                    "steps": [
+                        {
+                            "id": "search_step",
+                            "tool_name": "search",
+                            "input_template": {"query": "keyword"},
+                            "output_key": "searched",
+                            "max_retries": 1,
+                        }
+                    ]
+                }
+            },
+            payload={"context": {}},
+            tool_context={"workflow_name": "content.workflow.run"},
+        )
+    )
+
+    assert attempts["search"] == 2
+    assert tool_result["outputs"]["searched"]["snippet"] == "keyword"
+    assert tool_result["step_results"][0]["attempts"] == 2
+
+
+def test_dag_workflow_runner_handles_tool_plan_fallback_and_continue() -> None:
+    registry = PluginRegistry()
+    runner = DagWorkflowRunner(registry)
+
+    async def fake_invoke_tool_agent(*, run_id, task_type, payload, options):  # noqa: ANN001
+        _ = run_id, task_type, options
+        tool_call = payload["tool_calls"][0]
+        if tool_call["tool_name"] == "search":
+            raise RuntimeError("search failed")
+        if tool_call["tool_name"] == "translate":
+            return {"result": {"translated_text": f"ok:{tool_call['parameters']['text']}"}}
+        raise AssertionError("unexpected tool")
+
+    runner._invoke_tool_agent = fake_invoke_tool_agent  # type: ignore[method-assign]
+    tool_result = asyncio.run(
+        runner._execute_tool_plan(  # type: ignore[attr-defined]  # noqa: SLF001
+            spec=WorkflowGraphSpec(
+                run_id="fallback-run",
+                workflow_name="content.workflow.run",
+                source_name="stub",
+                nodes=[],
+            ),
+            node=WorkflowNodeSpec(node_id="tool", stage="tool", component_name="tool-calling-agent"),
+            options={
+                "tool_plan": {
+                    "steps": [
+                        {
+                            "id": "search_step",
+                            "tool_name": "search",
+                            "input_template": {"query": "keyword"},
+                            "output_key": "searched",
+                            "on_error": "fallback",
+                            "fallback_output": {"snippet": "fallback snippet"},
+                        },
+                        {
+                            "id": "translate_step",
+                            "tool_name": "translate",
+                            "input_template": {"text": "{outputs.searched.snippet}"},
+                            "output_key": "translated",
+                        },
+                        {
+                            "id": "continue_step",
+                            "tool_name": "search",
+                            "input_template": {"query": "broken"},
+                            "output_key": "continued",
+                            "on_error": "continue",
+                        },
+                    ]
+                }
+            },
+            payload={"context": {}},
+            tool_context={"workflow_name": "content.workflow.run"},
+        )
+    )
+
+    assert tool_result["outputs"]["searched"]["snippet"] == "fallback snippet"
+    assert tool_result["outputs"]["translated"]["translated_text"] == "ok:fallback snippet"
+    assert tool_result["outputs"]["continued"]["status"] == "failed"
+    assert tool_result["step_results"][0]["status"] == "fallback"
+    assert tool_result["step_results"][2]["status"] == "continued"

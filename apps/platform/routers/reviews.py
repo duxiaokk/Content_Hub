@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from apps.platform.database import get_db
-from apps.platform.schemas.review import ReviewApproveRequest, ReviewRejectRequest
+from apps.platform.schemas.review import ReviewApproveRequest, ReviewAutoReviewRequest, ReviewRejectRequest
 from apps.platform.services.review_service import ReviewNotFoundError, ReviewService
 
 router = APIRouter(prefix="/api/internal/content/reviews", tags=["reviews"])
@@ -81,6 +81,26 @@ def archive_review(
     service = ReviewService(db)
     try:
         item = service.archive(review_id, reviewer)
+    except ReviewNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return {"code": 0, "data": item, "message": "ok"}
+
+
+@router.post("/{review_id}/auto-review")
+def auto_review(
+    review_id: int,
+    body: ReviewAutoReviewRequest,
+    db: Session = Depends(get_db),
+):
+    service = ReviewService(db)
+    try:
+        item = service.auto_review(
+            review_id,
+            reviewer=body.reviewer,
+            use_tool=body.use_tool,
+            auto_approve=body.auto_approve,
+            auto_reject=body.auto_reject,
+        )
     except ReviewNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return {"code": 0, "data": item, "message": "ok"}

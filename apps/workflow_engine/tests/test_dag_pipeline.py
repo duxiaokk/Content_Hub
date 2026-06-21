@@ -25,7 +25,11 @@ class StubFetcher:
 class StubProcessor:
     name = "stub-processor"
 
+    def __init__(self) -> None:
+        self.last_options = None
+
     async def process(self, content, context):  # noqa: ANN001
+        self.last_options = dict(context.options)
         content.processed_content = f"processed:{content.raw_content}"
         return ProcessResult(content=content, status="processed")
 
@@ -89,3 +93,54 @@ def test_dag_workflow_runner_executes_graph() -> None:
     assert result["status"] == "succeeded"
     assert result["results"][0]["publish_status"] == "published"
     assert result["trace"]["items_succeeded"] == 1
+
+
+def test_dag_workflow_runner_merges_tool_stage_results() -> None:
+    registry = PluginRegistry()
+    registry.register_fetcher(StubFetcher())
+    processor = StubProcessor()
+    registry.register_processor(processor)
+    registry.register_publisher(StubPublisher())
+
+    runner = DagWorkflowRunner(registry)
+    runner._linear_runner.repository = StubRepository()
+
+    async def fake_execute_tool_node(*_args, **_kwargs):  # noqa: ANN001
+        return {"summary": "tool enriched context"}
+
+    runner._execute_tool_node = fake_execute_tool_node  # type: ignore[method-assign]
+    result = asyncio.run(
+        runner.run(
+            WorkflowGraphSpec(
+                run_id="run-tool-1",
+                workflow_name="content.workflow.run",
+                source_name="stub",
+                nodes=[
+                    WorkflowNodeSpec(node_id="fetch", stage="fetch", component_name="stub-fetcher"),
+                    WorkflowNodeSpec(
+                        node_id="enrich",
+                        stage="tool",
+                        component_name="tool-calling-agent",
+                        depends_on=["fetch"],
+                        options={"result_key": "background_info"},
+                    ),
+                    WorkflowNodeSpec(
+                        node_id="process",
+                        stage="process",
+                        component_name="stub-processor",
+                        depends_on=["fetch", "enrich"],
+                    ),
+                    WorkflowNodeSpec(
+                        node_id="publish",
+                        stage="publish",
+                        component_name="stub-publisher",
+                        depends_on=["process"],
+                    ),
+                ],
+            )
+        )
+    )
+
+    assert result["status"] == "succeeded"
+    assert processor.last_options is not None
+    assert processor.last_options["tool_results"]["background_info"]["summary"] == "tool enriched context"

@@ -41,7 +41,7 @@ def _submit_scheduler_task(
 
 
 def build_content_workflow_payload(body: "ContentWorkflowRunRequest") -> dict[str, Any]:
-    return {
+    payload = {
         "workflow_name": body.workflow_name,
         "source_name": body.source_name,
         "fetcher_name": body.fetcher_name,
@@ -53,6 +53,9 @@ def build_content_workflow_payload(body: "ContentWorkflowRunRequest") -> dict[st
         "process_options": body.process_options,
         "publish_options": body.publish_options,
     }
+    if body.nodes:
+        payload["nodes"] = body.nodes
+    return payload
 
 
 def build_radar_pipeline_payload(body: "RadarPipelineRunRequest") -> dict[str, Any]:
@@ -106,6 +109,7 @@ class ContentWorkflowRunRequest(BaseModel):
     fetch_options: dict[str, Any] = Field(default_factory=dict)
     process_options: dict[str, Any] = Field(default_factory=dict)
     publish_options: dict[str, Any] = Field(default_factory=dict)
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
     trace_id: str | None = None
     idempotency_key: str | None = Field(default=None, max_length=128)
 

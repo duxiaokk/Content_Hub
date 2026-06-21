@@ -12,6 +12,8 @@ from apps.ai_processor.api.service import AIProcessingService
 from apps.ai_processor.runtime.config import load_ai_processor_config
 from apps.platform.database import SessionLocal
 from apps.platform.models import ContentItem, PublishRecord, ReviewQueue, WorkflowRun
+from apps.platform.services.agent_memory_service import AgentMemoryService
+from apps.platform.services.review_service import ReviewService
 from apps.workflow_engine.pipeline import DagWorkflowRunner, WorkflowGraphSpec, WorkflowNodeSpec
 from apps.workflow_engine.pipeline.filter_node import FilterNode
 from apps.workflow_engine.registry.bootstrap import build_default_registry
@@ -50,6 +52,38 @@ class WorkflowEngineService:
         row.reviewed_at = None
         db.add(row)
         return row
+
+    @staticmethod
+    def _remember_workflow_outcome(
+        db: Session,
+        *,
+        workflow_name: str,
+        trace: WorkflowRunTrace,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        total = max(trace.items_total, 0)
+        success_rate = 1.0 if total == 0 else round(trace.items_succeeded / total, 4)
+        payload = {
+            "run_id": trace.run_id,
+            "status": trace.status,
+            "items_total": trace.items_total,
+            "items_succeeded": trace.items_succeeded,
+            "items_failed": trace.items_failed,
+            "success_rate": success_rate,
+            "error_summary": trace.error_summary,
+            "suggested_limit": 10 if success_rate < 0.5 else 20,
+            "suggested_lookback_hours": 48 if success_rate < 0.5 else 24,
+        }
+        if extra:
+            payload.update(extra)
+        AgentMemoryService(db).upsert_memory(
+            scope="workflow",
+            scope_key=workflow_name,
+            memory_type="outcome",
+            memory_key="last_run",
+            value=payload,
+            source="workflow_engine",
+        )
 
     async def run_radar_pipeline(self, request: dict[str, Any]) -> dict[str, Any]:
         db: Session = SessionLocal()
@@ -184,8 +218,34 @@ class WorkflowEngineService:
             db.commit()
             trace.log_step_end("review_prepare", status="success", items_out=len(review_items))
 
+            quality_gate_results: list[dict[str, Any]] = []
+            review_options = dict(request.get("review_options") or {})
+            if bool(review_options.get("enable_quality_gate")) and review_queue_ids:
+                trace.log_step_start("quality_gate", items_in=len(review_queue_ids))
+                review_service = ReviewService(db)
+                for review_queue_id in review_queue_ids:
+                    quality_gate_results.append(
+                        review_service.auto_review(
+                            int(review_queue_id),
+                            reviewer=str(review_options.get("reviewer") or "quality-gate"),
+                            use_tool=bool(review_options.get("use_tool")),
+                            auto_approve=bool(review_options.get("auto_approve")),
+                            auto_reject=bool(review_options.get("auto_reject", True)),
+                        )
+                    )
+                trace.log_step_end("quality_gate", status="success", items_out=len(quality_gate_results))
+
             trace.error_summary = "; ".join(error["error"] for error in errors[:3]) or None
             trace.mark_finished(status="failed" if errors and stop_on_error else "success")
+            self._remember_workflow_outcome(
+                db,
+                workflow_name="radar_pipeline",
+                trace=trace,
+                extra={
+                    "review_queue_count": len(review_queue_ids),
+                    "quality_gate_count": len(quality_gate_results),
+                },
+            )
             persist_trace(status=trace.status, error_summary=trace.error_summary)
 
             return {
@@ -196,6 +256,7 @@ class WorkflowEngineService:
                 "filtered_out": filter_result.filtered_out,
                 "review_items": [asdict(item) for item in review_items],
                 "review_queue_ids": review_queue_ids,
+                "quality_gate_results": quality_gate_results,
                 "errors": errors,
                 "trace_payload": trace.snapshot(),
             }
@@ -223,11 +284,47 @@ class WorkflowEngineService:
         lookback_hours: int,
         limit: int,
         options: dict[str, Any] | None = None,
+        nodes: list[dict[str, Any]] | None = None,
         run_id: str | None = None,
     ) -> dict[str, Any]:
         resolved_run_id = str(run_id or str(uuid.uuid4()))
         resolved_options = dict(options or {})
+        resolved_nodes = list(nodes or [])
         runner = DagWorkflowRunner(workflow_registry)
+        if resolved_nodes:
+            graph_nodes = [
+                WorkflowNodeSpec(
+                    node_id=str(node.get("node_id") or f"node-{index}"),
+                    stage=str(node.get("stage") or ""),
+                    component_name=str(node.get("component_name") or ""),
+                    depends_on=[str(dep) for dep in node.get("depends_on", []) if str(dep).strip()],
+                    options=dict(node.get("options") or {}),
+                )
+                for index, node in enumerate(resolved_nodes, start=1)
+            ]
+        else:
+            graph_nodes = [
+                WorkflowNodeSpec(
+                    node_id="fetch",
+                    stage="fetch",
+                    component_name=fetcher_name,
+                    options=dict(resolved_options.get("fetch") or {}),
+                ),
+                WorkflowNodeSpec(
+                    node_id="process",
+                    stage="process",
+                    component_name=processor_name,
+                    depends_on=["fetch"],
+                    options=dict(resolved_options.get("process") or {}),
+                ),
+                WorkflowNodeSpec(
+                    node_id="publish",
+                    stage="publish",
+                    component_name=publisher_name,
+                    depends_on=["process"],
+                    options=dict(resolved_options.get("publish") or {}),
+                ),
+            ]
         result = await runner.run(
             WorkflowGraphSpec(
                 run_id=resolved_run_id,
@@ -235,30 +332,29 @@ class WorkflowEngineService:
                 source_name=source_name,
                 lookback_hours=lookback_hours,
                 limit=limit,
-                nodes=[
-                    WorkflowNodeSpec(
-                        node_id="fetch",
-                        stage="fetch",
-                        component_name=fetcher_name,
-                        options=dict(resolved_options.get("fetch") or {}),
-                    ),
-                    WorkflowNodeSpec(
-                        node_id="process",
-                        stage="process",
-                        component_name=processor_name,
-                        depends_on=["fetch"],
-                        options=dict(resolved_options.get("process") or {}),
-                    ),
-                    WorkflowNodeSpec(
-                        node_id="publish",
-                        stage="publish",
-                        component_name=publisher_name,
-                        depends_on=["process"],
-                        options=dict(resolved_options.get("publish") or {}),
-                    ),
-                ],
+                nodes=graph_nodes,
             )
         )
+        errors = list(result.get("errors") or [])
+        trace = WorkflowRunTrace(run_id=resolved_run_id, workflow_name=workflow_name)
+        trace.items_total = int(result.get("items_total") or 0)
+        trace.items_succeeded = int(result.get("items_succeeded") or 0)
+        trace.items_failed = int(result.get("items_failed") or len(errors))
+        trace.error_summary = "; ".join(str(error) for error in errors[:3]) or None
+        trace.mark_finished(status="failed" if errors else "success")
+        db: Session = SessionLocal()
+        try:
+            self._remember_workflow_outcome(
+                db,
+                workflow_name=workflow_name,
+                trace=trace,
+                extra={
+                    "node_count": len(graph_nodes),
+                    "has_tool_stage": any(node.stage == "tool" for node in graph_nodes),
+                },
+            )
+        finally:
+            db.close()
         return {
             **result,
             "run_id": resolved_run_id,
@@ -270,6 +366,7 @@ class WorkflowEngineService:
             "lookback_hours": lookback_hours,
             "limit": limit,
             "options": resolved_options,
+            "nodes": resolved_nodes,
         }
 
     def list_content_items(

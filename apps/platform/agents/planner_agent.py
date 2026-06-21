@@ -64,6 +64,9 @@ class PlannerAgent(BaseAgent):
             raise ValueError("missing 'intent' in payload")
 
         context = payload.get("context", {}) if isinstance(payload.get("context"), dict) else {}
+        memory_context = self._load_memory_context(context)
+        if memory_context:
+            context = {**context, "memory_context": memory_context}
         constraints = payload.get("constraints", {}) if isinstance(payload.get("constraints"), dict) else {}
         capabilities = payload.get("available_capabilities", []) if isinstance(payload.get("available_capabilities"), list) else []
 
@@ -72,6 +75,15 @@ class PlannerAgent(BaseAgent):
         if not self.config.mock_llm:
             return await self._plan_with_llm(intent, capabilities, context, constraints, is_complex)
         return self._plan_with_rules(intent, capabilities, context, is_complex)
+
+    @staticmethod
+    def _load_memory_context(context: dict[str, Any]) -> dict[str, Any]:
+        try:
+            from apps.platform.services.agent_memory_service import AgentMemoryService
+
+            return AgentMemoryService().build_planner_context(context)
+        except Exception:
+            return {}
 
     async def _plan_with_llm(self, intent: str, capabilities: list, context: dict, constraints: dict, is_complex: bool) -> dict:
         caps_text = json.dumps(capabilities, ensure_ascii=False)

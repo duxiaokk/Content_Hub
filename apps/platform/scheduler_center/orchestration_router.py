@@ -21,6 +21,7 @@ from scheduler_center.orchestration_schemas import (
 )
 from scheduler_center.router import _append_event, _append_log, _dumps, _get_trace_id, _utcnow
 from scheduler_center.schemas import TaskSubmitRequest
+from services.workflow_planning_service import WorkflowPlanningService
 
 router = APIRouter(prefix="/api/internal/orchestration", tags=["Orchestration"])
 
@@ -48,6 +49,16 @@ def _to_run_status(task_status: str) -> str:
 
 
 def _build_workflow_payload(body: RunSubmitRequest) -> dict[str, Any]:
+    if body.use_planner:
+        _, payload = WorkflowPlanningService().plan_workflow(
+            intent=body.intent,
+            context=dict(body.context or {}),
+            constraints=dict(body.constraints or {}),
+        )
+        payload["intent"] = body.intent
+        payload["constraints"] = dict(body.constraints or {})
+        return payload
+
     context = dict(body.context or {})
     fetcher_name = str(context.get("fetcher_name") or "cnblogs")
     workflow_body = ContentWorkflowRunRequest(
@@ -77,7 +88,17 @@ def submit_run(
 ) -> RunSubmitResponse:
     trace_id = body.trace_id or _get_trace_id(request)
     run_id = str(uuid.uuid4())
-    payload = _build_workflow_payload(body)
+    plan = None
+    if body.use_planner:
+        plan, payload = WorkflowPlanningService().plan_workflow(
+            intent=body.intent,
+            context=dict(body.context or {}),
+            constraints=dict(body.constraints or {}),
+        )
+        payload["intent"] = body.intent
+        payload["constraints"] = dict(body.constraints or {})
+    else:
+        payload = _build_workflow_payload(body)
     now = _utcnow()
     task = SchedulerTask(
         id=run_id,
@@ -112,7 +133,8 @@ def submit_run(
         run_id=run_id,
         trace_id=trace_id,
         status="PENDING",
-        total_tasks=3,
+        plan=plan.model_dump() if plan else None,
+        total_tasks=len(plan.tasks) if plan else 3,
         created_at=now,
     )
 

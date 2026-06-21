@@ -346,6 +346,31 @@ class WorkflowRun(Base):
     )
 
 
+class AgentMemory(Base):
+    __tablename__ = "agent_memory"
+
+    id = Column(Integer, primary_key=True, index=True)
+    scope = Column(String(32), nullable=False, index=True)
+    scope_key = Column(String(255), nullable=True, index=True)
+    memory_type = Column(String(32), nullable=False, index=True)
+    memory_key = Column(String(128), nullable=False, index=True)
+    value_json = Column(Text, nullable=False)
+    source = Column(String(64), nullable=True, index=True)
+    expires_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    __table_args__ = (
+        Index("ix_agent_memory_scope_scope_key_type", "scope", "scope_key", "memory_type"),
+        Index("uq_agent_memory_scope_scope_key_memory_key", "scope", "scope_key", "memory_key", unique=True),
+    )
+
+
 class SourceConfig(Base):
     __tablename__ = "source_configs"
 

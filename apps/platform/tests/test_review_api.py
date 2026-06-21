@@ -20,7 +20,7 @@ for path in (PLATFORM_DIR, REPO_ROOT):
 
 from apps.platform.database import Base
 from apps.platform.database import get_db
-from apps.platform.models import ContentItem, ReviewQueue  # noqa: F401
+from apps.platform.models import AgentMemory, ContentItem, ReviewQueue  # noqa: F401
 from apps.platform.routers.reviews import router
 
 
@@ -156,6 +156,45 @@ def test_archive_review_updates_status() -> None:
     assert body["data"]["reviewer"] == "archiver"
 
 
+def test_auto_review_runs_quality_gate_and_keeps_pending_when_no_auto_decision() -> None:
+    client, session_factory = _build_client()
+    review_id = _seed_review(session_factory)
+
+    response = client.post(
+        f"/api/internal/content/reviews/{review_id}/auto-review",
+        json={"reviewer": "quality-gate", "use_tool": True, "auto_approve": False, "auto_reject": False},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["status"] == "pending"
+    assert body["data"]["quality_gate"]["score"] > 0
+    assert body["data"]["quality_gate"]["tool_result"]["success"] is True
+    assert body["data"]["review_note"].startswith("quality_gate:")
+
+
+def test_auto_review_rejects_low_quality_candidate() -> None:
+    client, session_factory = _build_client()
+    review_id = _seed_review(session_factory)
+
+    db = session_factory()
+    review = db.query(ReviewQueue).filter(ReviewQueue.id == review_id).first()
+    assert review is not None
+    review.candidate_title = ""
+    review.candidate_content = ""
+    db.add(review)
+    db.commit()
+    db.close()
+
+    response = client.post(
+        f"/api/internal/content/reviews/{review_id}/auto-review",
+        json={"reviewer": "quality-gate", "auto_reject": True},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["status"] == "rejected"
+    assert body["data"]["quality_gate"]["status"] == "failed"
+
+
 def test_approve_review_with_edits_persists_edited_content() -> None:
     client, session_factory = _build_client()
     review_id = _seed_review(session_factory)
@@ -241,10 +280,16 @@ def test_list_reviews_returns_radar_generated_queue_item() -> None:
                     "run_id": "review-api-radar",
                     "fetch_run_id": 88,
                     "limit": 10,
+                        "review_options": {
+                            "enable_quality_gate": True,
+                            "use_tool": True,
+                            "auto_reject": False,
+                        },
                 }
             )
         )
         assert result["errors"] == []
+        assert len(result["quality_gate_results"]) == 1
 
         response = client.get("/api/internal/content/reviews/?status=pending")
         assert response.status_code == 200
@@ -253,6 +298,21 @@ def test_list_reviews_returns_radar_generated_queue_item() -> None:
         assert body["data"]["total"] == 1
         assert body["data"]["items"][0]["original_title"] == "Radar Review Item"
         assert body["data"]["items"][0]["status"] == "pending"
+        assert body["data"]["items"][0]["quality_gate"]["tool_result"]["success"] is True
+
+        verify_db = session_factory()
+        memory_row = (
+            verify_db.query(AgentMemory)
+            .filter(
+                AgentMemory.scope == "workflow",
+                AgentMemory.scope_key == "radar_pipeline",
+                AgentMemory.memory_type == "outcome",
+                AgentMemory.memory_key == "last_run",
+            )
+            .first()
+        )
+        assert memory_row is not None
+        verify_db.close()
     finally:
         platform_database.SessionLocal = original_platform_session
         workflow_service_module.SessionLocal = original_workflow_session

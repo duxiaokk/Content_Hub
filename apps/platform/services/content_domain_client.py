@@ -68,6 +68,7 @@ class ContentDomainClient:
                 "process": dict(payload.get("process_options") or {}),
                 "publish": dict(payload.get("publish_options") or {}),
             },
+            nodes=list(payload.get("nodes") or []),
             run_id=str(payload.get("run_id") or ""),
         )
         run_id = str(result.get("run_id") or payload.get("run_id") or "")

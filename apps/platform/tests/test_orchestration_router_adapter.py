@@ -88,6 +88,43 @@ def test_orchestration_adapter_uses_standard_workflow_payload() -> None:
         db.close()
 
 
+def test_orchestration_adapter_plans_workflow_when_use_planner_enabled() -> None:
+    Base.metadata.create_all(bind=engine)
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/internal/orchestration/runs",
+        headers={"x-internal-token": "local-dev-scheduler-token"},
+        json={
+            "intent": "抓取 GitHub 内容并搜索补充背景后生成中文摘要",
+            "name": "planned-workflow",
+            "context": {
+                "enable_tool_stage": True,
+                "search_query": "GitHub Python trending background",
+            },
+            "use_planner": True,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["plan"] is not None
+    assert payload["total_tasks"] == 4
+
+    run_id = payload["run_id"]
+    db = SessionLocal()
+    try:
+        task = db.query(SchedulerTask).filter_by(id=run_id).first()
+        assert task is not None
+        assert '"nodes"' in task.payload_json
+        assert '"stage": "tool"' in task.payload_json
+        assert '"component_name": "github_trending"' in task.payload_json
+    finally:
+        db.close()
+
+
 def test_orchestration_adapter_lists_scheduler_runs() -> None:
     app = FastAPI()
     app.include_router(router)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -24,6 +25,7 @@ class ReviewQueueOut(BaseModel):
     publish_status: str | None = None
     publish_path: str | None = None
     next_action: str | None = None
+    quality_gate: dict[str, Any] | None = None
 
 
 class ReviewApproveRequest(BaseModel):
@@ -35,3 +37,10 @@ class ReviewApproveRequest(BaseModel):
 class ReviewRejectRequest(BaseModel):
     reviewer: str = Field(default="admin", min_length=1)
     note: str = ""
+
+
+class ReviewAutoReviewRequest(BaseModel):
+    reviewer: str = Field(default="quality-gate", min_length=1)
+    use_tool: bool = False
+    auto_approve: bool = False
+    auto_reject: bool = True

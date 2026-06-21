@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -13,6 +14,7 @@ os.environ.setdefault("CONTENT_HUB_DEFAULT_REWRITE_PROFILE", "zh_tech_blog")
 from apps.ai_processor.api.profiles import load_rewrite_profile
 from apps.ai_processor.api.service import AIProcessingService
 from apps.ai_processor.processors.classify.processor import ClassifyProcessor
+from apps.ai_processor.processors.rewrite import processor as rewrite_processor_module
 from apps.ai_processor.processors.rewrite.processor import RewriteProcessor
 from apps.ai_processor.processors.summarize.processor import SummarizeProcessor
 from apps.ai_processor.processors.tag.processor import TagProcessor
@@ -238,3 +240,34 @@ def test_ai_processing_service_skips_rewrite_for_low_score():
     assert item.rewritten_title is None
     assert item.rewritten_content is None
     assert result.content.metadata["rewritten_title"] is None
+
+
+def test_rewrite_processor_self_critique_retries_once(monkeypatch: pytest.MonkeyPatch):
+    class SequencedProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def chat(self, **_kwargs):  # noqa: ANN003
+            self.calls += 1
+            responses = [
+                "Title: Bad Draft\nContent: Too short",
+                "Score: 0.2\nPass: no\nFeedback: 正文过短，需要补充事实和技术细节",
+                "Title: 改进后的标题\nContent: 这是一篇补充了事实和技术细节的中文技术博客改写版本，包含更多上下文。",
+            ]
+            return responses[self.calls - 1]
+
+    provider = SequencedProvider()
+    monkeypatch.setattr(rewrite_processor_module, "build_provider", lambda _config: provider)
+    processor = RewriteProcessor(_config())
+
+    result = asyncio.run(
+        processor.process(
+            _asset("Original title", "Original technical content with enough details for rewrite."),
+            ProcessContext(run_id="rewrite-1"),
+        )
+    )
+
+    assert result.status == "processed"
+    assert result.content.metadata["rewrite_attempts"] == 2
+    assert result.content.title == "改进后的标题"
+    assert "中文技术博客改写版本" in result.content.processed_content

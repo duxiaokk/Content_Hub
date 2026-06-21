@@ -29,6 +29,7 @@ import pathlib
 import re
 import time
 from collections import defaultdict
+from copy import deepcopy
 from typing import Any
 
 import httpx
@@ -115,6 +116,10 @@ class ToolCallingAgent(BaseAgent):
         return ["tool.call", "tool.execute", "tool.search", "tool.http", "tool.translate"]
 
     async def execute(self, task_type: str, payload: dict[str, Any], trace_id: str | None) -> dict[str, Any]:
+        tool_plan = payload.get("tool_plan") if isinstance(payload.get("tool_plan"), dict) else None
+        if tool_plan and isinstance(tool_plan.get("steps"), list) and tool_plan.get("steps"):
+            return await self._execute_tool_plan(payload, tool_plan)
+
         tool_calls = payload.get("tool_calls") if isinstance(payload.get("tool_calls"), list) else None
 
         # 如果未指定 tool_calls，用 LLM 自动选择
@@ -133,6 +138,110 @@ class ToolCallingAgent(BaseAgent):
 
         summary = self._build_summary(results)
         return {"results": results, "summary": summary}
+
+    async def _execute_tool_plan(self, payload: dict[str, Any], tool_plan: dict[str, Any]) -> dict[str, Any]:
+        tool_state = self._build_tool_state(
+            context=dict(payload.get("context") or {}),
+            payload=payload,
+            outputs={},
+            last_output=None,
+        )
+        step_results: list[dict[str, Any]] = []
+        outputs: dict[str, Any] = {}
+
+        for index, raw_step in enumerate(list(tool_plan.get("steps") or []), start=1):
+            step = dict(raw_step or {})
+            step_id = str(step.get("id") or f"step_{index}")
+            output_key = str(step.get("output_key") or step_id)
+            on_error = str(step.get("on_error") or "abort").lower()
+            max_retries = max(0, int(step.get("max_retries") or 0))
+            attempt = 0
+
+            while True:
+                try:
+                    result = await self._execute_tool_plan_step(step=step, tool_state=tool_state)
+                    outputs[output_key] = result
+                    tool_state = self._build_tool_state(
+                        context=dict(payload.get("context") or {}),
+                        payload=payload,
+                        outputs=outputs,
+                        last_output=result,
+                    )
+                    step_results.append(
+                        {
+                            "id": step_id,
+                            "tool_name": str(step.get("tool_name") or ""),
+                            "status": "succeeded",
+                            "attempts": attempt + 1,
+                            "output_key": output_key,
+                        }
+                    )
+                    break
+                except Exception as exc:
+                    if attempt < max_retries:
+                        attempt += 1
+                        continue
+                    if on_error == "continue":
+                        error_result = {"success": False, "error": str(exc), "step_id": step_id}
+                        outputs[output_key] = error_result
+                        tool_state = self._build_tool_state(
+                            context=dict(payload.get("context") or {}),
+                            payload=payload,
+                            outputs=outputs,
+                            last_output=error_result,
+                        )
+                        step_results.append(
+                            {
+                                "id": step_id,
+                                "tool_name": str(step.get("tool_name") or ""),
+                                "status": "continued",
+                                "attempts": attempt + 1,
+                                "output_key": output_key,
+                                "error": str(exc),
+                            }
+                        )
+                        break
+                    if on_error == "fallback":
+                        fallback_output = deepcopy(step.get("fallback_output", step.get("fallback_value", {})))
+                        outputs[output_key] = fallback_output
+                        tool_state = self._build_tool_state(
+                            context=dict(payload.get("context") or {}),
+                            payload=payload,
+                            outputs=outputs,
+                            last_output=fallback_output,
+                        )
+                        step_results.append(
+                            {
+                                "id": step_id,
+                                "tool_name": str(step.get("tool_name") or ""),
+                                "status": "fallback",
+                                "attempts": attempt + 1,
+                                "output_key": output_key,
+                                "error": str(exc),
+                            }
+                        )
+                        break
+                    raise RuntimeError(f"tool plan step '{step_id}' failed: {exc}") from exc
+
+        result_entries = [outputs[key] for key in outputs]
+        return {
+            "results": result_entries,
+            "step_results": step_results,
+            "outputs": outputs,
+            "last_output": deepcopy(tool_state.get("last_output")),
+            "summary": self._build_summary(result_entries),
+        }
+
+    async def _execute_tool_plan_step(self, *, step: dict[str, Any], tool_state: dict[str, Any]) -> dict[str, Any]:
+        tool_name = str(step.get("tool_name") or "").strip()
+        if not tool_name:
+            raise ValueError("tool plan step must define tool_name")
+        raw_input = step.get("input_template", step.get("parameters", {}))
+        rendered_input = self._render_tool_template(raw_input, tool_state)
+        result = await self._execute_tool(tool_name, rendered_input if isinstance(rendered_input, dict) else {})
+        if not result.get("success"):
+            raise RuntimeError(str(result.get("error") or f"tool '{tool_name}' failed"))
+        return result
 
     # ------------------------------------------------------------------
     # 工具执行
@@ -449,6 +558,60 @@ class ToolCallingAgent(BaseAgent):
     def _build_summary(self, results: list[dict]) -> str:
         successes = sum(1 for r in results if r.get("success"))
         return f"{successes}/{len(results)} tools succeeded"
+
+    @staticmethod
+    def _build_tool_state(
+        *,
+        context: dict[str, Any],
+        payload: dict[str, Any],
+        outputs: dict[str, Any],
+        last_output: Any,
+    ) -> dict[str, Any]:
+        return {
+            "context": deepcopy(context),
+            "payload": deepcopy(payload),
+            "outputs": deepcopy(outputs),
+            "last_output": deepcopy(last_output),
+        }
+
+    @classmethod
+    def _render_tool_template(cls, value: Any, tool_state: dict[str, Any]) -> Any:
+        if isinstance(value, dict):
+            return {str(key): cls._render_tool_template(item, tool_state) for key, item in value.items()}
+        if isinstance(value, list):
+            return [cls._render_tool_template(item, tool_state) for item in value]
+        if not isinstance(value, str):
+            return value
+
+        exact_match = re.fullmatch(r"\{\{\s*([^{}]+?)\s*\}\}|\{\s*([^{}]+?)\s*\}", value)
+        if exact_match:
+            path = exact_match.group(1) or exact_match.group(2) or ""
+            return cls._resolve_template_value(path, tool_state)
+
+        def replace(match: re.Match[str]) -> str:
+            path = match.group(1) or match.group(2) or ""
+            resolved = cls._resolve_template_value(path, tool_state)
+            if resolved is None:
+                return ""
+            return str(resolved)
+
+        return re.sub(r"\{\{\s*([^{}]+?)\s*\}\}|\{\s*([^{}]+?)\s*\}", replace, value)
+
+    @staticmethod
+    def _resolve_template_value(path: str, tool_state: dict[str, Any]) -> Any:
+        current: Any = tool_state
+        for segment in [part for part in path.split(".") if part]:
+            if isinstance(current, dict):
+                current = current.get(segment)
+                continue
+            if isinstance(current, list):
+                try:
+                    current = current[int(segment)]
+                except (TypeError, ValueError, IndexError):
+                    return None
+                continue
+            return None
+        return deepcopy(current)
 
     def _extract_json(self, content: str) -> str:
         content = content.strip()

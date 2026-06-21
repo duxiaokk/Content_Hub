@@ -283,9 +283,10 @@ class TestAgentSync:
         assert not sync.should_retry_task("retry-test", "run-1", max_retries=3)
 
     def test_sync_event_log(self, sync: AgentSync) -> None:
-        sync.log_sync_event("run-1", "task-a", "STARTED", {"time": 1})
-        sync.log_sync_event("run-1", "task-a", "COMPLETED", {"time": 2})
-        events = sync.get_sync_log("run-1")
+        run_id = f"run-{time.time_ns()}"
+        sync.log_sync_event(run_id, "task-a", "STARTED", {"time": 1})
+        sync.log_sync_event(run_id, "task-a", "COMPLETED", {"time": 2})
+        events = sync.get_sync_log(run_id)
         assert len(events) == 2
         assert events[0]["event"] == "STARTED"
 
@@ -466,3 +467,78 @@ class TestToolCallingAgent:
         assert resp.status_code == 200
         results = resp.json()["result"]["results"]
         assert results[0]["success"]
+
+    def test_tool_plan_chain_executes(self, agent_app) -> None:
+        client = TestClient(agent_app)
+        resp = client.post(
+            "/api/internal/agent/run",
+            json={
+                "task_type": "tool.execute",
+                "payload": {
+                    "context": {"fetched_items": [{"title": "Hello Tool Plan"}]},
+                    "tool_plan": {
+                        "steps": [
+                            {
+                                "id": "stats",
+                                "tool_name": "text_stats",
+                                "input_template": {"text": "{context.fetched_items.0.title}"},
+                                "output_key": "stats",
+                            },
+                            {
+                                "id": "search",
+                                "tool_name": "web_search",
+                                "input_template": {"query": "count-{outputs.stats.result.word_count}"},
+                                "output_key": "search",
+                            },
+                        ]
+                    },
+                },
+            },
+            headers={"x-internal-token": "local-dev-scheduler-token"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()["result"]
+        assert body["outputs"]["stats"]["result"]["word_count"] == 3
+        assert body["outputs"]["search"]["result"]["query"] == "count-3"
+
+    def test_tool_plan_supports_fallback_and_continue(self, agent_app) -> None:
+        client = TestClient(agent_app)
+        resp = client.post(
+            "/api/internal/agent/run",
+            json={
+                "task_type": "tool.execute",
+                "payload": {
+                    "tool_plan": {
+                        "steps": [
+                            {
+                                "id": "fallback_step",
+                                "tool_name": "unknown_tool",
+                                "input_template": {"query": "broken"},
+                                "output_key": "fallback_result",
+                                "on_error": "fallback",
+                                "fallback_output": {"success": True, "result": {"query": "fallback-query"}},
+                            },
+                            {
+                                "id": "continue_step",
+                                "tool_name": "unknown_tool",
+                                "input_template": {"query": "still-broken"},
+                                "output_key": "continued_result",
+                                "on_error": "continue",
+                            },
+                            {
+                                "id": "search_step",
+                                "tool_name": "web_search",
+                                "input_template": {"query": "{outputs.fallback_result.result.query}"},
+                                "output_key": "search_result",
+                            },
+                        ]
+                    },
+                },
+            },
+            headers={"x-internal-token": "local-dev-scheduler-token"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()["result"]
+        assert body["step_results"][0]["status"] == "fallback"
+        assert body["step_results"][1]["status"] == "continued"
+        assert body["outputs"]["search_result"]["result"]["query"] == "fallback-query"

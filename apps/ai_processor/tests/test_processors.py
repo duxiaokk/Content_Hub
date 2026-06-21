@@ -271,3 +271,69 @@ def test_rewrite_processor_self_critique_retries_once(monkeypatch: pytest.Monkey
     assert result.content.metadata["rewrite_attempts"] == 2
     assert result.content.title == "改进后的标题"
     assert "中文技术博客改写版本" in result.content.processed_content
+
+
+def test_rewrite_processor_supports_multiple_self_critique_rounds(monkeypatch: pytest.MonkeyPatch):
+    class SequencedProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def chat(self, **_kwargs):  # noqa: ANN003
+            self.calls += 1
+            responses = [
+                "Title: First Draft\nContent: short",
+                "Score: 0.2\nPass: no\nFeedback: 内容太短",
+                "Title: Second Draft\nContent: 还是有点短，但开始包含中文技术内容。",
+                "Score: 0.5\nPass: no\nFeedback: 细节还不够",
+                "Title: 最终标题\nContent: 这是一篇完整的中文技术博客改写，保留了事实、代码块和更多技术背景说明。",
+                "Score: 0.9\nPass: yes\nFeedback: 质量通过",
+            ]
+            return responses[self.calls - 1]
+
+    provider = SequencedProvider()
+    monkeypatch.setattr(rewrite_processor_module, "build_provider", lambda _config: provider)
+    processor = RewriteProcessor(_config())
+
+    result = asyncio.run(
+        processor.process(
+            _asset("Original title", "Original technical content with enough details for rewrite."),
+            ProcessContext(
+                run_id="rewrite-2",
+                options={"rewrite_self_critique_rounds": 3, "rewrite_self_critique_threshold": 0.8},
+            ),
+        )
+    )
+
+    assert result.status == "processed"
+    assert result.content.metadata["rewrite_attempts"] == 3
+    assert len(result.content.metadata["rewrite_critique_history"]) == 3
+    assert result.content.title == "最终标题"
+
+
+def test_rewrite_processor_uses_memory_preferences_in_system_prompt(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, str] = {}
+
+    class RecordingProvider:
+        async def chat(self, **kwargs):  # noqa: ANN003
+            captured["system_prompt"] = kwargs["system_prompt"]
+            return "Title: 偏好标题\nContent: 这是一篇符合偏好要求的中文技术博客。"
+
+    monkeypatch.setattr(rewrite_processor_module, "build_provider", lambda _config: RecordingProvider())
+    processor = RewriteProcessor(_config())
+
+    result = asyncio.run(
+        processor.process(
+            _asset("Original title", "Original technical content with enough details for rewrite."),
+            ProcessContext(
+                run_id="rewrite-3",
+                options={
+                    "enable_self_critique": False,
+                    "rewrite_preferences": {"voice": "technical", "tone": "concise", "blocked_tags": ["营销"]},
+                },
+            ),
+        )
+    )
+
+    assert result.status == "processed"
+    assert "文风偏好：technical" in captured["system_prompt"]
+    assert "避免提及标签：营销" in captured["system_prompt"]

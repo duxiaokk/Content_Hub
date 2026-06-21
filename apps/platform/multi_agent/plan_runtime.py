@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ast
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Literal
 
@@ -116,7 +117,7 @@ class PlanRuntime:
 
     def _initialize_activation(self) -> None:
         for task in self._graph.tasks:
-            if task.task_key in self._branch_targets or task.condition:
+            if task.task_key in self._branch_targets:
                 task.activated = False
 
     @property
@@ -143,8 +144,25 @@ class PlanRuntime:
             if task.status != "pending" or not task.activated:
                 continue
             if all(self._dependency_satisfied(dep) for dep in task.depends_on):
+                if not self._evaluate_task_condition(task):
+                    continue
                 ready.append(task)
         return ready
+
+    def _evaluate_task_condition(self, task: PlanRuntimeTask) -> bool:
+        if not task.condition:
+            return True
+        try:
+            should_run = bool(self._evaluate_condition_expression(task.condition, task))
+        except Exception as exc:
+            task.status = "failed"
+            task.error = f"condition evaluation failed: {exc}"
+            self._activate_branch(task, "failure")
+            return False
+        if should_run:
+            return True
+        task.status = "skipped"
+        return False
 
     def _dependency_satisfied(self, dependency: str) -> bool:
         task = self._tasks_by_key.get(dependency)
@@ -216,6 +234,115 @@ class PlanRuntime:
                 item["error"] = task.error
             results[task.task_key] = item
         return results
+
+    def _evaluate_condition_expression(self, expression: str, task: PlanRuntimeTask) -> Any:
+        tree = ast.parse(expression, mode="eval")
+        scope = self._build_condition_scope(task)
+        return self._eval_ast_node(tree.body, scope)
+
+    def _build_condition_scope(self, task: PlanRuntimeTask) -> dict[str, Any]:
+        task_payloads: dict[str, Any] = {}
+        outputs: dict[str, Any] = {}
+        statuses: dict[str, str] = {}
+        errors: dict[str, str | None] = {}
+        for item in self._graph.tasks:
+            task_payloads[item.task_key] = {
+                "status": item.status,
+                "output": dict(item.output),
+                "attempt_count": item.attempt_count,
+                "error": item.error,
+                "input_payload": dict(item.input_payload),
+            }
+            outputs[item.task_key] = dict(item.output)
+            statuses[item.task_key] = item.status.upper()
+            errors[item.task_key] = item.error
+        return {
+            "outputs": outputs,
+            "statuses": statuses,
+            "tasks": task_payloads,
+            "errors": errors,
+            "input_payload": dict(task.input_payload),
+            "metadata": dict(self._graph.metadata),
+        }
+
+    def _eval_ast_node(self, node: ast.AST, scope: dict[str, Any]) -> Any:
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            if node.id in scope:
+                return scope[node.id]
+            raise ValueError(f"unknown name '{node.id}'")
+        if isinstance(node, ast.Attribute):
+            value = self._eval_ast_node(node.value, scope)
+            return self._resolve_member(value, node.attr)
+        if isinstance(node, ast.Subscript):
+            value = self._eval_ast_node(node.value, scope)
+            index = self._eval_ast_node(node.slice, scope)
+            return self._resolve_member(value, index)
+        if isinstance(node, ast.List):
+            return [self._eval_ast_node(item, scope) for item in node.elts]
+        if isinstance(node, ast.Tuple):
+            return tuple(self._eval_ast_node(item, scope) for item in node.elts)
+        if isinstance(node, ast.Dict):
+            return {
+                self._eval_ast_node(key, scope): self._eval_ast_node(value, scope)
+                for key, value in zip(node.keys, node.values)
+            }
+        if isinstance(node, ast.BoolOp):
+            values = [bool(self._eval_ast_node(item, scope)) for item in node.values]
+            if isinstance(node.op, ast.And):
+                return all(values)
+            if isinstance(node.op, ast.Or):
+                return any(values)
+            raise ValueError("unsupported boolean operator")
+        if isinstance(node, ast.UnaryOp):
+            operand = self._eval_ast_node(node.operand, scope)
+            if isinstance(node.op, ast.Not):
+                return not bool(operand)
+            if isinstance(node.op, ast.USub):
+                return -operand
+            if isinstance(node.op, ast.UAdd):
+                return +operand
+            raise ValueError("unsupported unary operator")
+        if isinstance(node, ast.Compare):
+            left = self._eval_ast_node(node.left, scope)
+            for operator, comparator_node in zip(node.ops, node.comparators):
+                right = self._eval_ast_node(comparator_node, scope)
+                if isinstance(operator, ast.Eq):
+                    matched = left == right
+                elif isinstance(operator, ast.NotEq):
+                    matched = left != right
+                elif isinstance(operator, ast.Gt):
+                    matched = left > right
+                elif isinstance(operator, ast.GtE):
+                    matched = left >= right
+                elif isinstance(operator, ast.Lt):
+                    matched = left < right
+                elif isinstance(operator, ast.LtE):
+                    matched = left <= right
+                elif isinstance(operator, ast.In):
+                    matched = left in right
+                elif isinstance(operator, ast.NotIn):
+                    matched = left not in right
+                elif isinstance(operator, ast.Is):
+                    matched = left is right
+                elif isinstance(operator, ast.IsNot):
+                    matched = left is not right
+                else:
+                    raise ValueError("unsupported compare operator")
+                if not matched:
+                    return False
+                left = right
+            return True
+        raise ValueError(f"unsupported condition syntax: {node.__class__.__name__}")
+
+    @staticmethod
+    def _resolve_member(value: Any, key: Any) -> Any:
+        if isinstance(value, dict):
+            return value.get(str(key))
+        if isinstance(value, list):
+            return value[int(key)]
+        return getattr(value, str(key))
 
     def count_by_status(self, status: TaskStatus) -> int:
         return sum(1 for task in self._graph.tasks if task.status == status)

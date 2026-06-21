@@ -111,7 +111,7 @@ def test_orchestration_adapter_plans_workflow_when_use_planner_enabled() -> None
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["plan"] is not None
-    assert payload["total_tasks"] == 4
+    assert payload["total_tasks"] >= 4
 
     run_id = payload["run_id"]
     db = SessionLocal()

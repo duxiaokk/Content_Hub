@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from agents.planner_agent import PlannerAgent
 from apps.platform.services.agent_memory_service import AgentMemoryService
 from apps.platform.services.workflow_planning_service import WorkflowPlanningService
 
@@ -80,6 +81,25 @@ def test_workflow_planning_service_calls_planner_agent(monkeypatch) -> None:
     assert isinstance(captured["context"], dict)
     assert plan.plan_id == "planner-1"
     assert any(node["stage"] == "tool" for node in payload["nodes"])
+
+
+def test_workflow_planning_service_respects_planner_mock_llm_override(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_execute(self, task_type, payload, trace_id):  # noqa: ANN001
+        captured["mock_llm"] = self.config.mock_llm
+        return {"plan_id": "planner-config", "tasks": []}
+
+    monkeypatch.setattr(PlannerAgent, "execute", fake_execute)
+
+    service = WorkflowPlanningService()
+    plan, _payload = service.plan_workflow(
+        intent="生成日报",
+        context={"workflow_name": "content.workflow.planned", "planner_mock_llm": False},
+    )
+
+    assert captured["mock_llm"] is False
+    assert plan.plan_id == "planner-config"
 
 
 def test_workflow_planning_service_maps_multiple_planner_tasks(monkeypatch) -> None:

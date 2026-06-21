@@ -131,13 +131,7 @@ class WorkflowPlanningService:
             {"agent_key": "workflow-process", "name": "Workflow Process", "task_types": ["workflow.process"]},
             {"agent_key": "workflow-publish", "name": "Workflow Publish", "task_types": ["workflow.publish"]},
         ]
-        agent = PlannerAgent(
-            AgentConfig(
-                agent_key="planner-agent",
-                task_types=["plan.decompose"],
-                mock_llm=True,
-            )
-        )
+        agent = PlannerAgent(self._build_planner_config(context))
         payload = {
             "intent": intent,
             "context": context,
@@ -148,6 +142,24 @@ class WorkflowPlanningService:
             return asyncio.run(agent.execute("plan.decompose", payload, None))
         except RuntimeError:
             return agent._plan_with_rules(intent, capabilities, context)  # noqa: SLF001
+        except Exception:
+            return agent._plan_with_rules(intent, capabilities, context)  # noqa: SLF001
+
+    @staticmethod
+    def _build_planner_config(context: dict[str, Any]) -> AgentConfig:
+        kwargs: dict[str, Any] = {
+            "agent_key": "planner-agent",
+            "task_types": ["plan.decompose"],
+        }
+        if "planner_mock_llm" in context:
+            kwargs["mock_llm"] = WorkflowPlanningService._as_bool(context.get("planner_mock_llm"))
+        if context.get("planner_llm_api_key"):
+            kwargs["llm_api_key"] = str(context.get("planner_llm_api_key"))
+        if context.get("planner_llm_base_url"):
+            kwargs["llm_base_url"] = str(context.get("planner_llm_base_url"))
+        if context.get("planner_llm_model"):
+            kwargs["llm_model"] = str(context.get("planner_llm_model"))
+        return AgentConfig(**kwargs)
 
     def _build_nodes_and_tasks_from_plan(
         self,
@@ -616,3 +628,9 @@ class WorkflowPlanningService:
             "tool_calls": tool_calls,
             "result_key": str(context.get("tool_result_key") or "tool_context"),
         }
+
+    @staticmethod
+    def _as_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}

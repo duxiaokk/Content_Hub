@@ -189,6 +189,55 @@ def test_fetch_service_keeps_running_when_one_source_fails():
     assert db.query(ContentItem).count() == 1
 
 
+def test_fetch_service_passes_xiaohongshu_config_into_fetcher():
+    _reset_repo_state()
+    db = _create_session()
+    captured_kwargs: dict[str, object] = {}
+
+    class _Subscription:
+        id = 99
+        source_type = "xiaohongshu"
+        source_name = "XHS"
+        account_identifier = "xhs-default"
+        feed_url = None
+        enabled = True
+        default_tags = None
+        last_cursor = None
+        config = {
+            "urls": ["https://www.xiaohongshu.com/discovery/item/abc123?xsec_token=test"],
+            "cookie": "cookie=value",
+            "proxy": "http://127.0.0.1:7890",
+            "timeout": 15,
+            "user_agent": "custom-agent",
+        }
+
+    class _RepoWithCustomLoad(_RepoNamespace):
+        @staticmethod
+        def load_subscriptions(_db: Session, *, sources: list[str], subscription_ids: list[int]):  # noqa: ANN001
+            del _db, sources, subscription_ids
+            return [_Subscription()]
+
+    def _factory(**kwargs):  # noqa: ANN003
+        captured_kwargs.update(kwargs)
+        return _FakeFetcher(items=[])
+
+    FETCHER_REGISTRY["xiaohongshu"] = _factory
+    service = FetchService(db, _RepoWithCustomLoad)
+
+    result = asyncio.run(service.run_sources(FetchBatchRequest(run_id="run-xhs", sources=["xiaohongshu"])))
+
+    assert result.errors == []
+    assert captured_kwargs == {
+        "source_name": "XHS",
+        "urls": ["https://www.xiaohongshu.com/discovery/item/abc123?xsec_token=test"],
+        "cookie": "cookie=value",
+        "proxy": "http://127.0.0.1:7890",
+        "timeout": 15,
+        "user_agent": "custom-agent",
+        "stream_key": "xhs-default",
+    }
+
+
 def test_fetch_service_dedupes_items_before_insert():
     _reset_repo_state()
     db = _create_session()
@@ -415,25 +464,25 @@ def test_rss_adapter_applies_lookback_and_limit():
         stale=stale.strftime("%a, %d %b %Y %H:%M:%S GMT"),
     )
 
-    original_urlopen = __import__("apps.fetcher_engine.runtime.rss", fromlist=["urlopen"]).urlopen
-    runtime_module = __import__("apps.fetcher_engine.runtime.rss", fromlist=["urlopen"])
+    import httpx
 
-    class _Response:
-        def __enter__(self):
-            return self
+    async def _mock_get(*args, **kwargs):  # noqa: ANN001,ANN003
+        class _Response:
+            status_code = 200
+            text = xml_text
 
-        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
-            return False
+            def raise_for_status(self) -> None:
+                pass
 
-        def read(self):
-            return xml_text.encode("utf-8")
+        return _Response()
 
-    runtime_module.urlopen = lambda *args, **kwargs: _Response()  # noqa: ARG005
+    original_get = httpx.AsyncClient.get
+    httpx.AsyncClient.get = _mock_get
     try:
         adapter = _FakeAdapter(source="rss", adapter_name="rss", feed_url="https://example.com/feed", stream_key="rss")
-        batch = adapter.fetch(RssFetchRequest(lookback_hours=48, limit=2))
+        batch = asyncio.run(adapter.fetch(RssFetchRequest(lookback_hours=48, limit=2)))
     finally:
-        runtime_module.urlopen = original_urlopen
+        httpx.AsyncClient.get = original_get
 
     assert len(batch.items) == 2
     assert [item.external_id for item in batch.items] == ["a", "b"]
@@ -448,20 +497,20 @@ def test_rss_fetcher_returns_zero_items_for_empty_feed():
     </rss>
     """.strip()
 
-    original_urlopen = __import__("apps.fetcher_engine.runtime.rss", fromlist=["urlopen"]).urlopen
-    runtime_module = __import__("apps.fetcher_engine.runtime.rss", fromlist=["urlopen"])
+    import httpx
 
-    class _Response:
-        def __enter__(self):
-            return self
+    async def _mock_get(*args, **kwargs):  # noqa: ANN001,ANN003
+        class _Response:
+            status_code = 200
+            text = xml_text
 
-        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
-            return False
+            def raise_for_status(self) -> None:
+                pass
 
-        def read(self):
-            return xml_text.encode("utf-8")
+        return _Response()
 
-    runtime_module.urlopen = lambda *args, **kwargs: _Response()  # noqa: ARG005
+    original_get = httpx.AsyncClient.get
+    httpx.AsyncClient.get = _mock_get
     try:
         fetcher = RssFetcher(
             feed_url="https://example.com/empty-feed",
@@ -478,7 +527,7 @@ def test_rss_fetcher_returns_zero_items_for_empty_feed():
             )
         )
     finally:
-        runtime_module.urlopen = original_urlopen
+        httpx.AsyncClient.get = original_get
 
     assert items == []
 
@@ -488,26 +537,26 @@ def test_fetch_service_returns_zero_items_for_empty_rss_feed():
     db = _create_session()
     subscription = _create_subscription(db, "rss", "Empty Feed", "rss-empty")
 
-    original_urlopen = __import__("apps.fetcher_engine.runtime.rss", fromlist=["urlopen"]).urlopen
-    runtime_module = __import__("apps.fetcher_engine.runtime.rss", fromlist=["urlopen"])
+    import httpx
     xml_text = "<rss><channel><title>Empty Feed</title></channel></rss>"
 
-    class _Response:
-        def __enter__(self):
-            return self
+    async def _mock_get(*args, **kwargs):  # noqa: ANN001,ANN003
+        class _Response:
+            status_code = 200
+            text = xml_text
 
-        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
-            return False
+            def raise_for_status(self) -> None:
+                pass
 
-        def read(self):
-            return xml_text.encode("utf-8")
+        return _Response()
 
-    runtime_module.urlopen = lambda *args, **kwargs: _Response()  # noqa: ARG005
+    original_get = httpx.AsyncClient.get
+    httpx.AsyncClient.get = _mock_get
     try:
         service = FetchService(db, _RepoNamespace)
         result = asyncio.run(service.run_sources(FetchBatchRequest(run_id="run-empty", sources=["rss"])))
     finally:
-        runtime_module.urlopen = original_urlopen
+        httpx.AsyncClient.get = original_get
 
     db.refresh(subscription)
     assert result.items == []
@@ -523,25 +572,25 @@ def test_fetch_service_collects_rss_parse_error_in_errors():
     db = _create_session()
     _create_subscription(db, "rss", "Broken Feed", "rss-broken")
 
-    original_urlopen = __import__("apps.fetcher_engine.runtime.rss", fromlist=["urlopen"]).urlopen
-    runtime_module = __import__("apps.fetcher_engine.runtime.rss", fromlist=["urlopen"])
+    import httpx
 
-    class _Response:
-        def __enter__(self):
-            return self
+    async def _mock_get(*args, **kwargs):  # noqa: ANN001,ANN003
+        class _Response:
+            status_code = 200
+            text = "<rss><channel><item></rss>"
 
-        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
-            return False
+            def raise_for_status(self) -> None:
+                pass
 
-        def read(self):
-            return b"<rss><channel><item></rss>"
+        return _Response()
 
-    runtime_module.urlopen = lambda *args, **kwargs: _Response()  # noqa: ARG005
+    original_get = httpx.AsyncClient.get
+    httpx.AsyncClient.get = _mock_get
     try:
         service = FetchService(db, _RepoNamespace)
         result = asyncio.run(service.run_sources(FetchBatchRequest(run_id="run-broken", sources=["rss"])))
     finally:
-        runtime_module.urlopen = original_urlopen
+        httpx.AsyncClient.get = original_get
 
     assert result.items == []
     assert len(result.errors) == 1
@@ -782,7 +831,10 @@ def test_cnblogs_fetcher_fills_required_fields():
                 ),
             )
 
-    RssFeedAdapter.fetch = lambda self, request=None, cursor_store=None: _Batch()  # noqa: ARG005
+    async def _fake_fetch(self, request=None, cursor_store=None):  # noqa: ANN001, ARG001
+        return _Batch()
+
+    RssFeedAdapter.fetch = _fake_fetch
     try:
         items = asyncio.run(
             fetcher.fetch(
@@ -808,56 +860,207 @@ def test_cnblogs_fetcher_fills_required_fields():
     assert items[0].metadata["view_count"] == 321
 
 
-def test_bilibili_fetcher_fills_required_fields():
-    fetcher = BilibiliFetcher(feed_url="https://example.com/bilibili.xml")
-    published_at = datetime(2026, 6, 12, 11, 0, tzinfo=timezone.utc)
-    original_fetch = RssFeedAdapter.fetch
+def test_bilibili_fetcher_fills_required_fields(monkeypatch):
+    fetcher = BilibiliFetcher(uid=2267573)
 
-    class _Batch:
-        def __init__(self):
-            self.items = (
-                UnifiedPost(
-                    source="bilibili",
-                    adapter="bilibili_rss",
-                    external_id="video-1",
-                    title="Bilibili Video",
-                    url="https://rsshub.app/bilibili/video/BV1xx411c7mD",
-                    published_at=published_at,
-                    summary="Video intro",
-                    media=(MediaAsset(url="https://example.com/cover.jpg"),),
-                    raw={
-                        "author": "up-master",
-                        "play_count": 12345,
-                        "danmaku_count": 67,
-                        "duration": "12:34",
-                        "bvid": "BV1xx411c7mD",
-                    },
-                ),
-            )
+    fake_vlist = [
+        {
+            "bvid": "BV1xx411c7mD",
+            "title": "Bilibili Video",
+            "description": "Video intro",
+            "author": "up-master",
+            "mid": 12345,
+            "pic": "https://example.com/cover.jpg",
+            "play": 12345,
+            "video_review": 67,
+            "length": "12:34",
+            "created": 1718182800,
+            "comment": 89,
+            "tag": "tech,programming",
+        },
+        {
+            "bvid": "BV1yy222c8nE",
+            "title": "Second Video",
+            "description": "Another intro",
+            "author": "up-master",
+            "mid": 12345,
+            "pic": "",
+            "play": 500,
+            "video_review": 10,
+            "length": "5:00",
+            "created": 1718096400,
+            "comment": 3,
+            "tag": "vlog",
+        },
+    ]
 
-    RssFeedAdapter.fetch = lambda self, request=None, cursor_store=None: _Batch()  # noqa: ARG005
-    try:
-        items = asyncio.run(
-            fetcher.fetch(
-                type(
-                    "Request",
-                    (),
-                    {"source_name": "Bilibili", "lookback_hours": 24, "limit": 10, "cursor": None, "options": {}},
-                )()
-            )
+    class _FakeResp:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"code": 0, "message": "0", "data": {"list": {"vlist": fake_vlist}}}
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            pass
+
+        async def get(self, url, **kwargs):
+            return _FakeResp()
+
+    import apps.fetcher_engine.connectors.bilibili.fetcher as _bili_fetcher
+    monkeypatch.setattr(_bili_fetcher.httpx, "AsyncClient", _FakeClient)
+
+    items = asyncio.run(
+        fetcher.fetch(
+            type(
+                "Request",
+                (),
+                {"source_name": "Bilibili", "lookback_hours": 24, "limit": 10, "cursor": None, "options": {}},
+            )()
         )
-    finally:
-        RssFeedAdapter.fetch = original_fetch
+    )
 
-    assert len(items) == 1
+    assert len(items) == 2
     assert items[0].source_url == "https://www.bilibili.com/video/BV1xx411c7mD"
-    assert items[0].raw_content == "Video intro"
-    assert items[0].metadata["source_account"] == "up-master"
-    assert items[0].metadata["published_at"] == published_at.isoformat()
-    assert items[0].metadata["summary"] == "Video intro"
-    assert items[0].metadata["url"] == "https://www.bilibili.com/video/BV1xx411c7mD"
+    assert items[0].source_id == "BV1xx411c7mD"
+    assert items[0].title == "Bilibili Video"
+    assert "播放: 12345" in (items[0].raw_content or "")
     assert items[0].metadata["author"] == "up-master"
     assert items[0].metadata["play_count"] == 12345
     assert items[0].metadata["danmaku_count"] == 67
     assert items[0].metadata["duration"] == "12:34"
     assert items[0].metadata["cover_url"] == "https://example.com/cover.jpg"
+    assert items[0].metadata["tags"] == ["tech", "programming"]
+
+    assert items[1].metadata["play_count"] == 500
+
+
+def test_fetch_service_retries_network_failure_before_success():
+    _reset_repo_state()
+    db = _create_session()
+
+    class _Subscription:
+        id = 201
+        source_type = "reddit"
+        source_name = "Retry Reddit"
+        account_identifier = "retry-reddit"
+        feed_url = None
+        enabled = True
+        default_tags = None
+        last_cursor = None
+        config = {
+            "subreddit": "python",
+            "retry_times": 1,
+            "retry_backoff_seconds": 0,
+        }
+
+    class _RepoWithCustomLoad(_RepoNamespace):
+        @staticmethod
+        def load_subscriptions(_db: Session, *, sources: list[str], subscription_ids: list[int]):  # noqa: ANN001
+            del _db, sources, subscription_ids
+            return [_Subscription()]
+
+        @staticmethod
+        def update_cursor(_db: Session, subscription, cursor_value: str):  # noqa: ANN001
+            subscription.last_cursor = cursor_value
+
+    class _FlakyFetcher:
+        def __init__(self):
+            self.calls = 0
+
+        async def fetch(self, request):  # noqa: ANN001
+            del request
+            self.calls += 1
+            if self.calls == 1:
+                raise TimeoutError("network timeout")
+            return [
+                SourceItem(
+                    source_type="reddit",
+                    source_id="retry-post-1",
+                    title="Recovered item",
+                    source_url="https://example.com/retry-post-1",
+                    raw_content="content",
+                    metadata={},
+                )
+            ]
+
+    FETCHER_REGISTRY["reddit"] = lambda **kwargs: _FlakyFetcher()  # noqa: ARG005
+    service = FetchService(db, _RepoWithCustomLoad)
+
+    result = asyncio.run(service.run_sources(FetchBatchRequest(run_id="run-retry", sources=["reddit"])))
+
+    assert result.errors == []
+    assert result.stats.total_inserted == 1
+    assert result.stats.total_retried == 1
+    assert any(alert.alert_type == "network_retry_recovered" for alert in result.alerts)
+
+
+def test_fetch_service_filters_invalid_items_with_validation_rules():
+    _reset_repo_state()
+    db = _create_session()
+
+    class _Subscription:
+        id = 202
+        source_type = "rss"
+        source_name = "Validated RSS"
+        account_identifier = "validated-rss"
+        feed_url = "https://example.com/feed.xml"
+        enabled = True
+        default_tags = None
+        last_cursor = None
+        config = {
+            "validation_rules": {
+                "require_source_url": True,
+                "require_raw_content": True,
+            },
+            "invalid_alert_threshold": 0.4,
+        }
+
+    class _RepoWithCustomLoad(_RepoNamespace):
+        @staticmethod
+        def load_subscriptions(_db: Session, *, sources: list[str], subscription_ids: list[int]):  # noqa: ANN001
+            del _db, sources, subscription_ids
+            return [_Subscription()]
+
+        @staticmethod
+        def update_cursor(_db: Session, subscription, cursor_value: str):  # noqa: ANN001
+            subscription.last_cursor = cursor_value
+
+    FETCHER_REGISTRY["rss"] = lambda **kwargs: _FakeFetcher(  # noqa: ARG005
+        items=[
+            SourceItem(
+                source_type="rss",
+                source_id="bad-1",
+                title="Bad Item",
+                source_url=None,
+                raw_content=None,
+                metadata={},
+            ),
+            SourceItem(
+                source_type="rss",
+                source_id="good-1",
+                title="Good Item",
+                source_url="https://example.com/good-1",
+                raw_content="good content",
+                metadata={},
+            ),
+        ]
+    )
+    service = FetchService(db, _RepoWithCustomLoad)
+
+    result = asyncio.run(service.run_sources(FetchBatchRequest(run_id="run-validate", sources=["rss"])))
+
+    assert result.stats.total_inserted == 1
+    assert result.stats.total_validated == 1
+    assert result.stats.total_invalid == 2
+    assert sorted(issue.reason for issue in result.validation_issues) == ["empty_raw_content", "missing_source_url"]
+    assert any(alert.alert_type == "invalid_ratio_high" for alert in result.alerts)

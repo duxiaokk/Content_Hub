@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
-import re
 from typing import Any
 from urllib.parse import urlparse
 
-import httpx
-
+from apps.fetcher_engine.connectors.xiaohongshu.xhs_downloader_bridge import XhsDownloaderBridge
 from apps.fetcher_engine.runtime.base import BaseFetcher
 from apps.workflow_engine.registry.contracts import FetchRequest, SourceItem
 
@@ -15,204 +12,130 @@ logger = logging.getLogger(__name__)
 
 
 class XiaohongshuFetcher(BaseFetcher):
-    """小红书笔记抓取器，通过分享链接直接请求 HTML 解析笔记数据。
-
-    无需 Cookie，无需 XHS-Downloader 服务。
-    支持格式：
-    - https://www.xiaohongshu.com/discovery/item/{note_id}?xsec_token=...
-    - https://www.xiaohongshu.com/user/profile/{user_id}/{note_id}?xsec_token=...
-    """
+    """通过 XHS-Downloader 采集小红书笔记数据。"""
 
     name = "xiaohongshu"
     source_type = "xiaohongshu"
-    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-    request_timeout = 30
 
     def __init__(
         self,
         urls: list[str] | None = None,
         stream_key: str = "xiaohongshu:default",
+        cookie: str | None = None,
+        proxy: str | dict[str, Any] | None = None,
+        timeout: int = 10,
+        user_agent: str | None = None,
     ) -> None:
-        self.urls = urls or []
+        self.urls = [url.strip() for url in (urls or []) if isinstance(url, str) and url.strip()]
         self.stream_key = stream_key
+        self.cookie = cookie or ""
+        self.proxy = proxy
+        self.timeout = timeout
+        self.user_agent = user_agent or ""
 
     async def fetch(self, request: FetchRequest) -> list[SourceItem]:
-        target_urls = self.urls
-        if not target_urls:
+        if not self.urls:
             logger.warning("XiaohongshuFetcher urls is empty, nothing to fetch")
             return []
 
-        items: list[SourceItem] = []
-        for url in target_urls:
-            try:
-                item = self._fetch_single(url)
-            except Exception as exc:
-                logger.warning("XHS fetch failed for %s: %s", url, exc)
-                continue
-            if item is not None:
-                items.append(item)
+        bridge = XhsDownloaderBridge(
+            cookie=self.cookie,
+            proxy=self.proxy,
+            timeout=self.timeout,
+            user_agent=self.user_agent,
+        )
+        details = await bridge.extract_many(self.urls)
+        items = [self._to_source_item(detail) for detail in details]
+        normalized_items = [item for item in items if item is not None]
+        max_items = request.limit if request.limit > 0 else len(normalized_items)
+        return normalized_items[:max_items]
 
-        max_items = request.limit if request.limit > 0 else len(items)
-        return items[:max_items]
-
-    def _fetch_single(self, url: str) -> SourceItem | None:
-        """请求单条笔记页面，解析 HTML 中的笔记数据。"""
-        # 标准化 URL（确保是完整的分享链接）
-        normalized_url = self._normalize_url(url)
-
-        headers = {
-            "User-Agent": self.user_agent,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Referer": "https://www.xiaohongshu.com",
-        }
-
-        with httpx.Client(timeout=self.request_timeout, follow_redirects=True) as client:
-            resp = client.get(normalized_url, headers=headers)
-
-        if resp.status_code != 200:
-            raise RuntimeError(f"HTTP {resp.status_code}")
-
-        # 检查是否被重定向到 404/登录页
-        if "404" in str(resp.url) or "error_code" in str(resp.url):
-            raise RuntimeError("note not found or requires login")
-
-        # 解析 HTML 中的 INITIAL_STATE
-        return self._parse_html_to_item(url, resp.text)
-
-    def _normalize_url(self, url: str) -> str:
-        """将 user/profile 链接转换为 discovery/item 格式（如果适用）。"""
-        # 如果是 /user/profile/{user_id}/{note_id}?xsec_token=... 格式
-        # 保持原样，因为带 xsec_token 的链接可以直接访问
-        return url.strip()
-
-    def _parse_html_to_item(self, url: str, html: str) -> SourceItem | None:
-        """从 HTML 文本解析笔记数据并转换为 SourceItem。"""
-        data = self._parse_initial_state(html)
-        if not data:
-            return None
-        return self._to_source_item(url, data)
-
-    def _parse_initial_state(self, html: str) -> dict[str, Any] | None:
-        """从 HTML 中提取并解析 window.__INITIAL_STATE__。"""
-        match = re.search(r"window\.__INITIAL_STATE__=({.+?});?</script>", html, re.DOTALL)
-        if not match:
+    def _to_source_item(self, detail: dict[str, Any]) -> SourceItem | None:
+        source_url = self._safe_text(detail.get("作品链接"))
+        source_id = self._safe_text(detail.get("作品ID")) or self._extract_source_id(source_url)
+        description = self._safe_text(detail.get("作品描述"))
+        media_urls = self._split_media_urls(detail.get("下载地址"))
+        live_photo_urls = self._split_media_urls(detail.get("动图地址"))
+        title = self._safe_text(detail.get("作品标题")) or description or source_id
+        if not title or (not description and not media_urls and not live_photo_urls):
             return None
 
-        raw = match.group(1)
-        # 修复 JavaScript 中的 undefined / NaN
-        raw = raw.replace("undefined", "null").replace("NaN", "null")
+        author = self._safe_text(detail.get("作者昵称"))
+        author_id = self._safe_text(detail.get("作者ID"))
+        published_at = self._safe_text(detail.get("发布时间"))
+        note_type = self._normalize_type(detail.get("作品类型"))
+        tags = self._normalize_tags(detail.get("作品标签"))
 
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            logger.warning("Failed to parse INITIAL_STATE JSON: %s", exc)
-            return None
-
-        if not isinstance(data, dict):
-            return None
-
-        # 提取笔记数据
-        note_section = data.get("note")
-        if not isinstance(note_section, dict):
-            return None
-
-        detail_map = note_section.get("noteDetailMap")
-        if not isinstance(detail_map, dict):
-            return None
-
-        # 找到第一个非 null 的笔记
-        for key, value in detail_map.items():
-            if key == "null":
-                continue
-            if isinstance(value, dict) and "note" in value:
-                return value["note"]
-
-        return None
-
-    def _to_source_item(self, original_url: str, note: dict[str, Any]) -> SourceItem | None:
-        title = note.get("title")
-        if not title or not isinstance(title, str) or not title.strip():
-            return None
-
-        desc = note.get("desc") or ""
-        author = note.get("user", {}).get("nickname") if isinstance(note.get("user"), dict) else None
-        note_type = self._detect_type(note)
-        images = self._extract_images(note)
-        video_url = self._extract_video_url(note)
-        cover_url = note.get("cover", {}).get("url") if isinstance(note.get("cover"), dict) else None
-        if not cover_url and images:
-            cover_url = images[0]
-
-        published_at = note.get("time")
-        source_id = note.get("id") or self._extract_source_id(original_url)
-
-        raw_content = self._build_raw_content(desc, images, note_type, video_url)
-
-        interact = note.get("interactInfo", {}) if isinstance(note.get("interactInfo"), dict) else {}
-        tags = note.get("tagList", []) if isinstance(note.get("tagList"), list) else []
-        tag_names = [t.get("name") for t in tags if isinstance(t, dict) and t.get("name")]
+        video_url = media_urls[0] if note_type == "video" and media_urls else None
+        images = media_urls if note_type != "video" else []
+        cover_url = images[0] if images else None
+        raw_content = self._build_raw_content(description, images, note_type, video_url)
 
         return SourceItem(
             source_type=self.source_type,
             source_id=source_id,
-            title=title.strip(),
-            source_url=original_url,
+            title=title,
+            source_url=source_url,
             raw_content=raw_content,
             metadata={
                 "published_at": published_at,
                 "author": author,
+                "author_id": author_id,
                 "type": note_type,
                 "images": images,
                 "cover_url": cover_url,
                 "video_url": video_url,
+                "live_photo_urls": live_photo_urls,
                 "stream_key": self.stream_key,
                 "note_id": source_id,
-                "likes": interact.get("likedCount"),
-                "comments": interact.get("commentCount"),
-                "collected": interact.get("collectedCount"),
-                "shares": interact.get("sharedCount"),
-                "tags": tag_names,
+                "likes": detail.get("点赞数量"),
+                "comments": detail.get("评论数量"),
+                "collected": detail.get("收藏数量"),
+                "shares": detail.get("分享数量"),
+                "tags": tags,
             },
         )
 
-    def _detect_type(self, note: dict[str, Any]) -> str:
-        raw_type = note.get("type", "")
-        if raw_type == "video":
+    @staticmethod
+    def _safe_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        return str(value).strip()
+
+    @staticmethod
+    def _normalize_type(raw_type: Any) -> str:
+        value = XiaohongshuFetcher._safe_text(raw_type)
+        if value == "视频":
             return "video"
-        if raw_type == "normal":
-            return "image"
-        # fallback: 根据图片/视频字段推断
-        if note.get("video"):
-            return "video"
-        if note.get("imageList"):
+        if value in {"图文", "图集"}:
             return "image"
         return "image"
 
-    def _extract_images(self, note: dict[str, Any]) -> list[str]:
-        image_list = note.get("imageList", [])
-        if not isinstance(image_list, list):
-            return []
-        urls = []
-        for img in image_list:
-            if isinstance(img, dict):
-                url = img.get("url") or img.get("urlDefault")
-                if url:
-                    urls.append(url)
-            elif isinstance(img, str):
-                urls.append(img)
-        return urls
+    @staticmethod
+    def _normalize_tags(raw_tags: Any) -> list[str]:
+        if isinstance(raw_tags, list):
+            return [str(tag).strip() for tag in raw_tags if str(tag).strip()]
+        if isinstance(raw_tags, str):
+            separators = raw_tags.replace("，", ",").replace("、", ",")
+            return [tag.strip() for tag in separators.split(",") if tag.strip()]
+        return []
 
-    def _extract_video_url(self, note: dict[str, Any]) -> str | None:
-        video = note.get("video")
-        if isinstance(video, dict):
-            return video.get("url") or video.get("src")
-        return None
+    @staticmethod
+    def _split_media_urls(raw_urls: Any) -> list[str]:
+        if isinstance(raw_urls, list):
+            return [str(url).strip() for url in raw_urls if str(url).strip() and str(url).strip() != "NaN"]
+        if isinstance(raw_urls, str):
+            return [url.strip() for url in raw_urls.split() if url.strip() and url.strip() != "NaN"]
+        return []
 
-    def _extract_source_id(self, url: str) -> str:
-        # 从 URL 中提取 note_id
+    @staticmethod
+    def _extract_source_id(url: str) -> str:
+        if not url:
+            return ""
         parsed = urlparse(url)
         path = parsed.path
-        # 匹配 /discovery/item/xxx 或 /user/profile/xxx/xxx
         if "/discovery/item/" in path:
             parts = path.split("/discovery/item/")
             if len(parts) > 1:
@@ -223,15 +146,14 @@ class XiaohongshuFetcher(BaseFetcher):
                 return parts[4].split("?")[0]
         return path.split("/")[-1].split("?")[0] or url
 
-    def _build_raw_content(self, content: str, images: list[str], note_type: str, video_url: str | None) -> str | None:
+    @staticmethod
+    def _build_raw_content(content: str, images: list[str], note_type: str, video_url: str | None) -> str | None:
         parts: list[str] = []
         if content:
             parts.append(content)
-
         if note_type == "video" and video_url:
             parts.append(f"\n\n[视频]({video_url})")
         elif images:
-            for img in images:
-                parts.append(f"\n\n![图片]({img})")
-
+            for image_url in images:
+                parts.append(f"\n\n![图片]({image_url})")
         return "\n".join(parts) if parts else None

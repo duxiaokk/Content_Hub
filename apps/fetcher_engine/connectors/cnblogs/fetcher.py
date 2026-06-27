@@ -21,7 +21,7 @@ class CNBlogsFetcher(BaseFetcher):
             feed_url=self.feed_url,
             stream_key=self.stream_key,
         )
-        batch = adapter.fetch(
+        batch = await adapter.fetch(
             request=RssFetchRequest(lookback_hours=request.lookback_hours),
             cursor_store=None,
         )

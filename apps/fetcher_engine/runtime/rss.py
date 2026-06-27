@@ -6,9 +6,11 @@ from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlparse
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+
+import httpx
 from xml.etree import ElementTree as ET
+
+import httpx
 
 
 CONTENT_NAMESPACES = {
@@ -156,11 +158,73 @@ def _iter_media(item: ET.Element) -> tuple[MediaAsset, ...]:
     return tuple(unique_assets)
 
 
+def _is_atom_feed(root: ET.Element) -> bool:
+    """判断是否为 Atom 格式（根标签为 feed 或带命名空间的 feed）。"""
+    tag = root.tag
+    if tag == "feed":
+        return True
+    if tag.startswith("{") and tag.endswith("}feed"):
+        return True
+    return False
+
+
+def parse_atom_items(root: ET.Element, source: str, adapter: str) -> list[UnifiedPost]:
+    """解析 Atom 格式 XML。"""
+    parsed_items: list[UnifiedPost] = []
+    for index, entry in enumerate(root.findall("entry"), start=1):
+        # Atom 链接通常放在 <link href="..." />
+        link = ""
+        link_elem = entry.find("link")
+        if link_elem is not None:
+            link = link_elem.attrib.get("href", "")
+
+        title = _node_text(entry, "title") or link or f"{source}-{index}"
+        guid = _node_text(entry, "id") or derive_external_id(link, fallback=f"{source}-{index}")
+        summary = (
+            strip_html(_node_text(entry, "summary"))
+            or strip_html(_node_text(entry, "content", "{http://www.w3.org/2005/Atom}content"))
+            or None
+        )
+        published_at = (
+            parse_datetime(_node_text(entry, "updated", "{http://www.w3.org/2005/Atom}updated"))
+            or parse_datetime(_node_text(entry, "published", "{http://www.w3.org/2005/Atom}published"))
+            or utc_now()
+        )
+        # Atom 作者通常是 <author><name>xxx</name></author>
+        author = _node_text(entry, "author", "{http://www.w3.org/2005/Atom}author")
+        if author:
+            name_elem = entry.find("name")
+            if name_elem is not None and name_elem.text:
+                author = name_elem.text.strip()
+
+        parsed_items.append(
+            UnifiedPost(
+                source=source,
+                adapter=adapter,
+                external_id=guid,
+                title=title,
+                url=link,
+                published_at=published_at,
+                summary=summary,
+                media=_iter_media(entry),
+                raw={
+                    "guid": guid,
+                    "author": author,
+                },
+            )
+        )
+    parsed_items.sort(key=lambda current: (current.published_at, current.external_id), reverse=True)
+    return parsed_items
+
+
 def parse_rss_items(xml_text: str, source: str, adapter: str) -> list[UnifiedPost]:
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as error:
         raise ParseError(f"invalid rss payload for {source}: {error}") from error
+
+    if _is_atom_feed(root):
+        return parse_atom_items(root, source, adapter)
 
     channel = root.find("channel")
     if channel is None:
@@ -209,25 +273,27 @@ class RssFeedAdapter:
     stream_key: str
     user_agent: str = "content-hub-fetcher/1.0"
 
-    def fetch(self, request: RssFetchRequest | None = None, cursor_store: object | None = None) -> FetchBatch:
+    async def fetch(self, request: RssFetchRequest | None = None, cursor_store: object | None = None) -> FetchBatch:
         del cursor_store
         actual_request = request or RssFetchRequest()
-        http_request = Request(
-            self.feed_url,
-            headers={
-                "User-Agent": self.user_agent,
-                "Accept": "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, text/html;q=0.5",
-            },
-        )
-        try:
-            with urlopen(http_request, timeout=30) as response:
-                xml_text = response.read().decode("utf-8", errors="replace")
-        except TimeoutError as error:
-            raise RuntimeError(f"rss fetch timeout for {self.feed_url}") from error
-        except HTTPError as error:
-            raise RuntimeError(f"rss http error for {self.feed_url}: {error.code}") from error
-        except URLError as error:
-            raise RuntimeError(f"rss network error for {self.feed_url}: {error.reason}") from error
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    self.feed_url,
+                    headers={
+                        "User-Agent": self.user_agent,
+                        "Accept": "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, text/html;q=0.5",
+                    },
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                xml_text = response.text
+            except httpx.TimeoutException as error:
+                raise RuntimeError(f"rss fetch timeout for {self.feed_url}") from error
+            except httpx.HTTPStatusError as error:
+                raise RuntimeError(f"rss http error for {self.feed_url}: {error.response.status_code}") from error
+            except httpx.RequestError as error:
+                raise RuntimeError(f"rss network error for {self.feed_url}: {error}") from error
 
         items = parse_rss_items(xml_text=xml_text, source=self.source, adapter=self.adapter_name)
         filtered_items = [item for item in items if within_lookback(item.published_at, actual_request)]

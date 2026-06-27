@@ -121,7 +121,7 @@ class RedisSubmitQueue:
         retry_delay_seconds: float,
     ) -> dict[str, Any]:
         if not self.enabled:
-            raise RuntimeError("redis submit queue not enabled")
+            raise RuntimeError("redis submit queue is not available for the standard submit path")
 
         now = _utcnow().isoformat()
         task_obj = {

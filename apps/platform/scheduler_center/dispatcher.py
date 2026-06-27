@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 try:
     from scheduler_center import _ensure_stdlib_platform
     from scheduler_center.config import (
+        CONTENT_FETCH_BATCH,
         CONTENT_PIPELINE_DAILY_DIGEST,
         CONTENT_PIPELINE_RADAR,
         scheduler_settings,
@@ -31,6 +32,7 @@ try:
 except ImportError:  # pragma: no cover - package import fallback
     from apps.platform.scheduler_center import _ensure_stdlib_platform
     from apps.platform.scheduler_center.config import (
+        CONTENT_FETCH_BATCH,
         CONTENT_PIPELINE_DAILY_DIGEST,
         CONTENT_PIPELINE_RADAR,
         scheduler_settings,
@@ -69,6 +71,22 @@ def _load_platform_fetch_dependencies():
     return platform_models, create_content_item, get_content_item_by_source, update_content_item, FetchBatchRequest, FetchService
 
 
+def _load_platform_source_dependencies():
+    from apps.platform import models as platform_models
+    from apps.platform.database import SessionLocal as PlatformSessionLocal
+    from apps.platform.services.fetch_alert_service import dispatch_fetch_alerts
+
+    return PlatformSessionLocal, platform_models, dispatch_fetch_alerts
+
+
+def _record_fetch_metrics(**kwargs: Any) -> None:
+    try:
+        from apps.platform.core.observability.metrics import record_fetch_metrics
+    except Exception:
+        return
+    record_fetch_metrics(**kwargs)
+
+
 class TaskStatus:
     PENDING = "PENDING"
     RUNNING = "RUNNING"
@@ -95,6 +113,7 @@ class SchedulerDispatcher:
         self._running: dict[str, Future[Any]] = {}
         self._running_lock = threading.Lock()
         self._rr_lock = threading.Lock()
+        self._scheduled_submit_lock = threading.Lock()
         self._rr_index = 0
         self._registry_built = False
         self._last_scheduled_minute: str | None = None
@@ -254,8 +273,18 @@ class SchedulerDispatcher:
                     task_type=str(job["task_type"]),
                     payload=dict(job.get("payload") or {}),
                     scheduled_for=current,
+                    idempotency_key=f"{job['task_type']}:{minute_key}",
                 )
                 dispatched.append(task_id)
+
+        for job in self._load_dynamic_source_jobs(current):
+            task_id = self.dispatch_scheduled_task(
+                task_type=CONTENT_FETCH_BATCH,
+                payload=job["payload"],
+                scheduled_for=current,
+                idempotency_key=str(job["idempotency_key"]),
+            )
+            dispatched.append(task_id)
 
         if dispatched:
             self._last_scheduled_minute = minute_key
@@ -267,15 +296,40 @@ class SchedulerDispatcher:
         task_type: str,
         payload: dict[str, Any],
         scheduled_for: datetime | None = None,
+        idempotency_key: str | None = None,
+    ) -> str:
+        with self._scheduled_submit_lock:
+            return self._dispatch_scheduled_task_locked(
+                task_type=task_type,
+                payload=payload,
+                scheduled_for=scheduled_for,
+                idempotency_key=idempotency_key,
+            )
+
+    def _dispatch_scheduled_task_locked(
+        self,
+        *,
+        task_type: str,
+        payload: dict[str, Any],
+        scheduled_for: datetime | None = None,
+        idempotency_key: str | None = None,
     ) -> str:
         db = SessionLocal()
         try:
             now = scheduled_for or _utcnow()
+            resolved_idempotency_key = idempotency_key or f"{task_type}:{now.strftime('%Y-%m-%dT%H:%M')}"
+            existing_id = (
+                db.query(SchedulerTask.id)
+                .filter(SchedulerTask.idempotency_key == resolved_idempotency_key)
+                .scalar()
+            )
+            if existing_id is not None:
+                return str(existing_id)
             task_id = new_task_id()
             trace_id = str(uuid.uuid4())
             task = SchedulerTask(
                 id=task_id,
-                idempotency_key=f"{task_type}:{now.strftime('%Y-%m-%dT%H:%M')}",
+                idempotency_key=resolved_idempotency_key,
                 trace_id=trace_id,
                 task_type=task_type,
                 payload_json=json.dumps(payload, ensure_ascii=False),
@@ -309,7 +363,20 @@ class SchedulerDispatcher:
                 attempt_no=0,
                 message="submitted by cron scheduler",
             )
-            db.commit()
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                for _ in range(3):
+                    existing_id = (
+                        db.query(SchedulerTask.id)
+                        .filter(SchedulerTask.idempotency_key == task.idempotency_key)
+                        .scalar()
+                    )
+                    if existing_id is not None:
+                        return str(existing_id)
+                    time.sleep(0.01)
+                raise
             return task_id
         finally:
             db.close()
@@ -321,12 +388,95 @@ class SchedulerDispatcher:
             return False
         minute, hour, day, month, weekday = parts
         return (
-            minute == str(now.minute)
-            and hour == str(now.hour)
-            and day == "*"
-            and month == "*"
-            and weekday == "*"
+            SchedulerDispatcher._cron_field_matches(minute, now.minute)
+            and SchedulerDispatcher._cron_field_matches(hour, now.hour)
+            and SchedulerDispatcher._cron_field_matches(day, now.day)
+            and SchedulerDispatcher._cron_field_matches(month, now.month)
+            and SchedulerDispatcher._cron_field_matches(weekday, now.weekday())
         )
+
+    @staticmethod
+    def _cron_field_matches(expression: str, value: int) -> bool:
+        expression = expression.strip()
+        if expression == "*":
+            return True
+        if expression.startswith("*/"):
+            try:
+                step = int(expression[2:])
+            except ValueError:
+                return False
+            return step > 0 and value % step == 0
+        if "," in expression:
+            return any(SchedulerDispatcher._cron_field_matches(part, value) for part in expression.split(","))
+        try:
+            return int(expression) == value
+        except ValueError:
+            return False
+
+    def _load_dynamic_source_jobs(self, now: datetime) -> list[dict[str, Any]]:
+        try:
+            platform_session_local, platform_models, _dispatch_fetch_alerts = _load_platform_source_dependencies()
+            del _dispatch_fetch_alerts
+        except Exception:
+            return []
+
+        db = platform_session_local()
+        try:
+            try:
+                rows = (
+                    db.query(platform_models.SourceConfig)
+                    .filter(platform_models.SourceConfig.enabled.is_(True))
+                    .order_by(platform_models.SourceConfig.id.asc())
+                    .all()
+                )
+            except Exception:
+                return []
+            jobs: list[dict[str, Any]] = []
+            for row in rows:
+                config = self._load_json_dict(getattr(row, "config_json", None))
+                schedule_expression = str(config.get("schedule_expression") or "").strip()
+                if not schedule_expression or not self._cron_matches(schedule_expression, now):
+                    continue
+                jobs.append(
+                    {
+                        "idempotency_key": f"{CONTENT_FETCH_BATCH}:source:{row.id}:{now.strftime('%Y-%m-%dT%H:%M')}",
+                        "payload": {
+                            "source_config_id": row.id,
+                            "source_type": row.source_type,
+                            "source_name": row.name,
+                            "channels": self._load_json_list(getattr(row, "channels", None)),
+                            "keywords": self._load_json_list(getattr(row, "keywords", None)),
+                            "lookback_hours": int(row.lookback_hours or 24),
+                            "limit": int(row.item_limit or 20),
+                            "dedup_window_hours": int(row.dedup_window_hours or 24),
+                            "trigger_type": "scheduled",
+                            "config": config,
+                        },
+                    }
+                )
+            return jobs
+        finally:
+            db.close()
+
+    @staticmethod
+    def _load_json_dict(raw: str | None) -> dict[str, Any]:
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    @staticmethod
+    def _load_json_list(raw: str | None) -> list[Any]:
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return []
+        return parsed if isinstance(parsed, list) else []
 
     def _choose_agent_from_endpoints(self) -> Optional[str]:
         endpoints = scheduler_settings.scheduler_agent_endpoints
@@ -972,12 +1122,21 @@ class SchedulerDispatcher:
             FetchBatchRequest,
             FetchService,
         ) = _load_platform_fetch_dependencies()
+        platform_session_local, platform_models, dispatch_fetch_alerts = _load_platform_source_dependencies()
 
         source_config_id = int(payload.get("source_config_id") or 0)
         if source_config_id <= 0:
             raise ValueError("source_config_id is required")
 
-        source = db.query(platform_models.SourceConfig).filter(platform_models.SourceConfig.id == source_config_id).first()
+        # 使用平台数据库 session 查询 SourceConfig（调度器 DB 没有这些表）
+        platform_db: Session = platform_session_local()
+        try:
+            source = platform_db.query(platform_models.SourceConfig).filter(
+                platform_models.SourceConfig.id == source_config_id
+            ).first()
+        finally:
+            platform_db.close()
+
         if source is None:
             raise ValueError(f"source config not found: {source_config_id}")
         if not bool(source.enabled):
@@ -1034,6 +1193,26 @@ class SchedulerDispatcher:
                     content_item.fetch_run_id = fetch_run.id
                     db.add(content_item)
 
+        alert_payloads = dispatch_fetch_alerts(
+            db,
+            source=source,
+            fetch_run=fetch_run,
+            task_result=result.model_dump(),
+            append_log=lambda level, message: self._append_log(
+                db,
+                task_id=task.id,
+                trace_id=task.trace_id,
+                level=level,
+                message=message,
+            ),
+        )
+        _record_fetch_metrics(
+            source_type=source_type,
+            status="failure" if result.errors else "success",
+            fetched_count=int(result.stats.total_fetched),
+            inserted_count=int(result.stats.total_inserted),
+            invalid_count=int(result.stats.total_invalid),
+        )
         db.commit()
         if result.stats.sources_failed > 0 or result.errors:
             first_error = result.errors[0].error if result.errors else "fetch batch failed"
@@ -1047,6 +1226,10 @@ class SchedulerDispatcher:
             "deduped_count": int(result.stats.total_deduped),
             "stats": result.stats.model_dump(),
             "errors": [error.model_dump() for error in result.errors],
+            "validation_issues": [issue.model_dump() for issue in result.validation_issues],
+            "source_stats": [stat.model_dump() for stat in result.source_stats],
+            "checkpoints": result.checkpoints,
+            "alerts": alert_payloads or [alert.model_dump() for alert in result.alerts],
         }
 
     def _build_platform_fetch_source_repo(

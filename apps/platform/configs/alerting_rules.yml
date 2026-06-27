@@ -23,7 +23,7 @@ groups:
           runbook: "Check Docker container status: docker compose ps | grep agent"
 
       - alert: AgentHighErrorRate
-        expr: rate(agent_errors_total[5m]) > 0.1
+        expr: rate(error_total{service=~"agent-.*"}[5m]) > 0.1
         for: 5m
         labels:
           severity: warning
@@ -50,7 +50,7 @@ groups:
     interval: 15s
     rules:
       - alert: SchedulerQueueBacklog
-        expr: scheduler_task_queue_depth > 100
+        expr: task_queue_depth{service="scheduler-api"} > 100
         for: 5m
         labels:
           severity: warning
@@ -61,7 +61,7 @@ groups:
           runbook: "Check dispatcher status and agent availability."
 
       - alert: SchedulerHighFailureRate
-        expr: rate(scheduler_task_failures_total[15m]) > 0.1
+        expr: rate(task_total{service="scheduler-api",status="failure"}[15m]) > 0.1
         for: 10m
         labels:
           severity: critical
@@ -88,7 +88,7 @@ groups:
     interval: 30s
     rules:
       - alert: OrchestrationRunFailed
-        expr: rate(orchestration_runs_failed_total[15m]) > 0.05
+        expr: rate(task_total{service="platform",task_type="content.pipeline.radar",status="failure"}[15m]) > 0.05
         for: 10m
         labels:
           severity: warning
@@ -98,7 +98,7 @@ groups:
           description: "{{ $value | humanizePercentage }} of orchestration runs failed in last 15 minutes."
 
       - alert: OrchestrationRunTimeout
-        expr: orchestration_run_duration_seconds > 300
+        expr: histogram_quantile(0.95, rate(task_duration_seconds_bucket{service="platform",task_type="content.pipeline.radar"}[15m])) > 300
         labels:
           severity: warning
           category: orchestration
@@ -179,7 +179,7 @@ groups:
           description: "p95 latency is {{ $value }}s for platform service."
 
       - alert: PlatformHighErrorRate
-        expr: rate(http_requests_total{job="platform",status=~"5.."}[5m]) / rate(http_requests_total{job="platform"}[5m]) > 0.05
+        expr: rate(http_request_total{service="platform",status_code=~"5.."}[5m]) / rate(http_request_total{service="platform"}[5m]) > 0.05
         for: 5m
         labels:
           severity: critical
@@ -187,6 +187,26 @@ groups:
         annotations:
           summary: "Platform 5xx error rate > 5%"
           description: "{{ $value | humanizePercentage }} 5xx rate on platform service."
+
+      - alert: FetchFailureRateHigh
+        expr: rate(fetch_run_total{status="failure"}[15m]) > 0.1
+        for: 10m
+        labels:
+          severity: critical
+          category: fetch
+        annotations:
+          summary: "Fetch failure rate > 10%"
+          description: "Automatic fetch tasks are failing too frequently in the last 15 minutes."
+
+      - alert: FetchInvalidRatioHigh
+        expr: rate(fetch_invalid_total[15m]) / clamp_min(rate(fetch_item_total{stage="fetched"}[15m]), 1) > 0.3
+        for: 10m
+        labels:
+          severity: warning
+          category: fetch
+        annotations:
+          summary: "Fetch invalid ratio > 30%"
+          description: "Too many fetched items are filtered by validation in the last 15 minutes."
 
   # ---------------------------------------------------------------------------
   # 基础设施告警

@@ -26,7 +26,7 @@ def _append_event(db, *, task_id: str, trace_id: str | None) -> None:
             from_status=None,
             to_status=TaskStatus.PENDING,
             attempt_no=0,
-            message="ingested_from_redis" if redis_submit_queue.enabled else None,
+            message="ingested_from_standard_redis_submit_path" if redis_submit_queue.enabled else None,
         )
     )
 
@@ -89,7 +89,9 @@ def _ingest_one(item: dict) -> None:
 
 def main() -> int:
     if not redis_submit_queue.enabled:
-        raise SystemExit("SCHEDULER_FAST_SUBMIT_ENABLED=true and SCHEDULER_REDIS_URL required")
+        raise SystemExit(
+            "standard redis submit path requires SCHEDULER_FAST_SUBMIT_ENABLED=true and SCHEDULER_REDIS_URL"
+        )
     Base.metadata.create_all(bind=engine)
     while True:
         item = redis_submit_queue.dequeue(timeout_seconds=2)

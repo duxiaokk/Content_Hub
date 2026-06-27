@@ -11,7 +11,6 @@ from sqlalchemy.pool import StaticPool
 from scheduler_center.database import Base
 from scheduler_center.models import SchedulerAgent, SchedulerTask, SchedulerTaskAttempt, SchedulerTaskEvent
 
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 
 class _FakeResp:
@@ -388,6 +387,12 @@ def test_dispatcher_executes_local_fetch_batch(monkeypatch):
     monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
     PlatformBase.metadata.create_all(bind=session_local.kw["bind"])
 
+    def fake_load_source_deps():
+        from apps.platform import models as pm
+        return session_local, pm, lambda *a, **kw: []
+
+    monkeypatch.setattr(dispatcher_module, "_load_platform_source_dependencies", fake_load_source_deps)
+
     captured_request: dict[str, object] = {}
 
     class FakeFetchService:
@@ -445,42 +450,42 @@ def test_dispatcher_executes_local_fetch_batch(monkeypatch):
                 ),
             )
 
-    def fake_load_dependencies():
-        from apps.platform import models as platform_models
-        from apps.fetcher_engine.api.models import FetchBatchRequest
+        def fake_load_dependencies():
+            from apps.platform import models as platform_models
+            from apps.fetcher_engine.api.models import FetchBatchRequest
 
-        def create_content_item(db, **kwargs):  # noqa: ANN001
-            item = platform_models.ContentItem(**kwargs)
-            db.add(item)
-            db.commit()
-            db.refresh(item)
-            return item
+            def create_content_item(db, **kwargs):  # noqa: ANN001
+                item = platform_models.ContentItem(**kwargs)
+                db.add(item)
+                db.commit()
+                db.refresh(item)
+                return item
 
-        def get_content_item_by_source(db, source_type, source_id):  # noqa: ANN001
+            def get_content_item_by_source(db, source_type, source_id):  # noqa: ANN001
+                return (
+                    db.query(platform_models.ContentItem)
+                    .filter(platform_models.ContentItem.source_type == source_type)
+                    .filter(platform_models.ContentItem.source_id == source_id)
+                    .first()
+                )
+
+            def update_content_item(db, item, **kwargs):  # noqa: ANN001
+                for key, value in kwargs.items():
+                    setattr(item, key, value)
+                db.commit()
+                db.refresh(item)
+                return item
+
             return (
-                db.query(platform_models.ContentItem)
-                .filter(platform_models.ContentItem.source_type == source_type)
-                .filter(platform_models.ContentItem.source_id == source_id)
-                .first()
+                platform_models,
+                create_content_item,
+                get_content_item_by_source,
+                update_content_item,
+                FetchBatchRequest,
+                FakeFetchService,
             )
 
-        def update_content_item(db, item, **kwargs):  # noqa: ANN001
-            for key, value in kwargs.items():
-                setattr(item, key, value)
-            db.commit()
-            db.refresh(item)
-            return item
-
-        return (
-            platform_models,
-            create_content_item,
-            get_content_item_by_source,
-            update_content_item,
-            FetchBatchRequest,
-            FakeFetchService,
-        )
-
-    monkeypatch.setattr(dispatcher_module, "_load_platform_fetch_dependencies", fake_load_dependencies)
+        monkeypatch.setattr(dispatcher_module, "_load_platform_fetch_dependencies", fake_load_dependencies)
 
     db = session_local()
     source = SourceConfig(
@@ -569,6 +574,12 @@ def test_dispatcher_attaches_fetch_run_id_to_deduped_existing_content(monkeypatc
     session_local = _make_session_local(db_path)
     monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
     PlatformBase.metadata.create_all(bind=session_local.kw["bind"])
+
+    def fake_load_source_deps():
+        from apps.platform import models as pm
+        return session_local, pm, lambda *a, **kw: []
+
+    monkeypatch.setattr(dispatcher_module, "_load_platform_source_dependencies", fake_load_source_deps)
 
     class FakeFetchService:
         def __init__(self, db, source_repo):  # noqa: ANN001
@@ -723,6 +734,12 @@ def test_dispatcher_marks_local_fetch_batch_failed_when_fetch_service_returns_er
     session_local = _make_session_local(db_path)
     monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
     PlatformBase.metadata.create_all(bind=session_local.kw["bind"])
+
+    def fake_load_source_deps():
+        from apps.platform import models as pm
+        return session_local, pm, lambda *a, **kw: []
+
+    monkeypatch.setattr(dispatcher_module, "_load_platform_source_dependencies", fake_load_source_deps)
 
     class FakeFetchService:
         def __init__(self, db, source_repo):  # noqa: ANN001

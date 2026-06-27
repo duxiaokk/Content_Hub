@@ -32,6 +32,10 @@ from apps.platform.services.console_service import (
     trigger_process_fetch_run,
     update_source,
 )
+from apps.platform.services.fetch_monitoring_service import (
+    build_fetch_monitor_overview,
+    get_fetch_run_monitor_detail,
+)
 
 router = APIRouter(prefix="/console", tags=["Console API v1"])
 
@@ -92,13 +96,18 @@ async def console_list_fetch_runs(
     status: str | None = Query(default=None),
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    refresh_status: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
-    items = list_fetch_runs(db, source_config_id=source_config_id, status_value=status)
-    total = len(items)
-    start = (page - 1) * page_size
-    end = start + page_size
-    return paginated(items[start:end], total, page, page_size)
+    items, total = list_fetch_runs(
+        db,
+        source_config_id=source_config_id,
+        status_value=status,
+        page=page,
+        page_size=page_size,
+        refresh_status=refresh_status,
+    )
+    return paginated(items, total, page, page_size)
 
 
 @router.post("/fetch-runs/{fetch_run_id}/process", response_model=ApiResponse)
@@ -112,6 +121,23 @@ async def console_process_fetch_run(
     if fetch_run is None:
         raise HTTPException(status_code=404, detail="fetch run not found")
     return success(trigger_process_fetch_run(db, fetch_run, body, user), "处理任务已提交")
+
+
+@router.get("/fetch-monitor/overview", response_model=ApiResponse)
+async def console_fetch_monitor_overview(
+    _user: RequireUser,
+    db: Session = Depends(get_db),
+):
+    return success(build_fetch_monitor_overview(db))
+
+
+@router.get("/fetch-runs/{fetch_run_id}/detail", response_model=ApiResponse)
+async def console_fetch_run_detail(
+    fetch_run_id: int,
+    _user: RequireUser,
+    db: Session = Depends(get_db),
+):
+    return success(get_fetch_run_monitor_detail(db, fetch_run_id))
 
 
 @router.get("/content-items", response_model=ApiResponse)

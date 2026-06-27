@@ -52,6 +52,12 @@ class SourceConfigItem(BaseModel):
     item_limit: int
     dedup_window_hours: int
     config: dict[str, Any] = Field(default_factory=dict)
+    schedule_expression: str | None = None
+    retry_times: int = 0
+    retry_backoff_seconds: float = 0.0
+    request_timeout_seconds: int = 30
+    validation_rules: dict[str, Any] = Field(default_factory=dict)
+    alert_policy: dict[str, Any] = Field(default_factory=dict)
     last_cursor: dict[str, Any] | str | None = None
     last_run_at: str | None = None
     created_at: str | None = None

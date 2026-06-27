@@ -16,7 +16,7 @@ for path in (str(REPO_ROOT), str(PLATFORM_DIR)):
         sys.path.insert(0, path)
 
 # 设置最小环境变量，避免配置模块在导入时抛错
-os.environ.setdefault("SECRET_KEY", "local-dev-test-secret")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-for-content-hub-jwt-32bytes-min")
 
 
 # 导入 scheduler_center 的 Base，用于创建测试数据库

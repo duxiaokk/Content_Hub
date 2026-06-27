@@ -19,6 +19,7 @@ except Exception:
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+CONTENT_FETCH_BATCH = "content.fetch.batch"
 CONTENT_PIPELINE_RADAR = "content.pipeline.radar"
 CONTENT_PIPELINE_DAILY_DIGEST = "content.pipeline.daily_digest"
 

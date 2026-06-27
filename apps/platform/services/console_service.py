@@ -49,6 +49,13 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
+def _config_value(row: models.SourceConfig, key: str, default: Any = None) -> Any:
+    config = _from_json(row.config_json, {})
+    if not isinstance(config, dict):
+        return default
+    return config.get(key, default)
+
+
 def ensure_platform_tables(db: Session) -> None:
     """表结构已在应用启动时通过 lifespan 创建，此处不再重复调用 create_all 以避免并发 I/O 竞争。"""
     pass
@@ -212,28 +219,38 @@ def list_fetch_runs(
     *,
     source_config_id: int | None = None,
     status_value: str | None = None,
-) -> list[dict[str, Any]]:
+    page: int = 1,
+    page_size: int = 20,
+    refresh_status: bool = False,
+) -> tuple[list[dict[str, Any]], int]:
     try:
         query = db.query(models.FetchRun, models.SourceConfig).join(
             models.SourceConfig, models.FetchRun.source_config_id == models.SourceConfig.id
         )
     except OperationalError:
-        return []
+        return [], 0
     if source_config_id is not None:
         query = query.filter(models.FetchRun.source_config_id == source_config_id)
     if status_value:
         query = query.filter(models.FetchRun.status == status_value)
     try:
-        rows = query.order_by(models.FetchRun.created_at.desc()).all()
+        total = query.count()
+        rows = (
+            query.order_by(models.FetchRun.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
     except OperationalError:
-        return []
+        return [], 0
     items: list[dict[str, Any]] = []
+    ACTIVE_STATUSES = {"pending", "running", "retrying"}
     for fetch_run, source in rows:
         item = serialize_fetch_run(fetch_run, source)
-        if fetch_run.task_id:
+        if refresh_status and fetch_run.task_id and fetch_run.status in ACTIVE_STATUSES:
             item = sync_fetch_run_status(db, fetch_run, source, item)
         items.append(item)
-    return items
+    return items, total
 
 
 def list_content_items(
@@ -378,6 +395,12 @@ def serialize_source(row: models.SourceConfig) -> dict[str, Any]:
         "item_limit": int(row.item_limit or 20),
         "dedup_window_hours": int(row.dedup_window_hours or 24),
         "config": _from_json(row.config_json, {}),
+        "schedule_expression": _config_value(row, "schedule_expression"),
+        "retry_times": int(_config_value(row, "retry_times", 0) or 0),
+        "retry_backoff_seconds": float(_config_value(row, "retry_backoff_seconds", 0.0) or 0.0),
+        "request_timeout_seconds": int(_config_value(row, "request_timeout_seconds", 30) or 30),
+        "validation_rules": _config_value(row, "validation_rules", {}),
+        "alert_policy": _config_value(row, "alert_policy", {}),
         "last_cursor": _from_json(row.last_cursor, None),
         "last_run_at": _iso(row.last_run_at),
         "created_at": _iso(row.created_at),
@@ -506,6 +529,25 @@ def get_scheduler_task_detail(task_id: str) -> dict[str, Any]:
     response.raise_for_status()
     payload = response.json()
     return payload if isinstance(payload, dict) else {}
+
+
+def get_scheduler_task_logs(task_id: str) -> list[dict[str, Any]]:
+    if not task_id:
+        return []
+    client = get_scheduler_client()
+    base_url = client.base_url + f"/api/internal/scheduler/tasks/{task_id}/logs"
+    headers = {"x-internal-token": client._config.internal_token}
+    import httpx
+
+    timeout = httpx.Timeout(float(client._config.timeout_seconds))
+    with httpx.Client(timeout=timeout) as http_client:
+        response = http_client.get(base_url, headers=headers, params={"limit": 200, "offset": 0})
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        return []
+    data = payload.get("items")
+    return data if isinstance(data, list) else []
 
 
 def sync_content_items_from_result(

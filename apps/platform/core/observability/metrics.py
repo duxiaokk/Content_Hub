@@ -37,6 +37,9 @@ METRIC_RETRY_TOTAL = None
 METRIC_ERROR_TOTAL = None
 METRIC_LLM_CALL_DURATION = None
 METRIC_LLM_CALL_TOTAL = None
+METRIC_FETCH_RUN_TOTAL = None
+METRIC_FETCH_ITEM_TOTAL = None
+METRIC_FETCH_INVALID_TOTAL = None
 
 
 def create_metrics(service_name: str | None = None) -> None:
@@ -50,6 +53,7 @@ def create_metrics(service_name: str | None = None) -> None:
     global METRIC_TASK_QUEUE_DEPTH, METRIC_AGENT_ONLINE_COUNT
     global METRIC_DB_CONNECTIONS_ACTIVE, METRIC_RETRY_TOTAL
     global METRIC_ERROR_TOTAL, METRIC_LLM_CALL_DURATION, METRIC_LLM_CALL_TOTAL
+    global METRIC_FETCH_RUN_TOTAL, METRIC_FETCH_ITEM_TOTAL, METRIC_FETCH_INVALID_TOTAL
 
     if not METRICS_ENABLED or _metrics_created:
         return
@@ -108,6 +112,18 @@ def create_metrics(service_name: str | None = None) -> None:
             "llm_call_total", "Total LLM API calls",
             ["service", "model", "status"],
         )
+        METRIC_FETCH_RUN_TOTAL = Counter(
+            "fetch_run_total", "Total fetch runs",
+            ["service", "source_type", "status"],
+        )
+        METRIC_FETCH_ITEM_TOTAL = Counter(
+            "fetch_item_total", "Total fetched items by stage",
+            ["service", "source_type", "stage"],
+        )
+        METRIC_FETCH_INVALID_TOTAL = Counter(
+            "fetch_invalid_total", "Total invalid fetched items",
+            ["service", "source_type", "reason"],
+        )
         _metrics_created = True
 
     except ImportError:
@@ -161,3 +177,34 @@ def track_task_duration(task_type: str):
                 ).observe(time.time() - start)
         return async_wrapper
     return decorator
+
+
+def record_fetch_metrics(
+    *,
+    source_type: str,
+    status: str,
+    fetched_count: int,
+    inserted_count: int,
+    invalid_count: int,
+) -> None:
+    service = os.getenv("OTEL_SERVICE_NAME", "")
+    METRIC_FETCH_RUN_TOTAL and METRIC_FETCH_RUN_TOTAL.labels(
+        service=service,
+        source_type=source_type,
+        status=status,
+    ).inc()
+    METRIC_FETCH_ITEM_TOTAL and METRIC_FETCH_ITEM_TOTAL.labels(
+        service=service,
+        source_type=source_type,
+        stage="fetched",
+    ).inc(max(0, fetched_count))
+    METRIC_FETCH_ITEM_TOTAL and METRIC_FETCH_ITEM_TOTAL.labels(
+        service=service,
+        source_type=source_type,
+        stage="inserted",
+    ).inc(max(0, inserted_count))
+    METRIC_FETCH_INVALID_TOTAL and METRIC_FETCH_INVALID_TOTAL.labels(
+        service=service,
+        source_type=source_type,
+        reason="validation_failed",
+    ).inc(max(0, invalid_count))

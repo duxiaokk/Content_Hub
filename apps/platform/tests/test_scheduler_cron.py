@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -12,11 +13,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from routers.internal_tasks import router
-from scheduler_center.config import CONTENT_PIPELINE_DAILY_DIGEST, CONTENT_PIPELINE_RADAR
+from scheduler_center.config import CONTENT_FETCH_BATCH, CONTENT_PIPELINE_DAILY_DIGEST, CONTENT_PIPELINE_RADAR
 from scheduler_center.database import Base
 from scheduler_center.models import SchedulerTask
 from services.content_domain_contracts import ContentDomainResult
@@ -126,6 +126,94 @@ def test_dispatcher_cron_respects_enable_flag(monkeypatch) -> None:
     db = session_local()
     assert dispatched == []
     assert db.query(SchedulerTask).count() == 0
+    db.close()
+
+
+def test_dispatcher_cron_submits_dynamic_source_fetch_jobs(monkeypatch) -> None:
+    import scheduler_center.dispatcher as dispatcher_module
+    from apps.platform import models as platform_models
+    from apps.platform.database import Base as PlatformBase
+
+    scheduler_session_local = _make_session_local()
+    monkeypatch.setattr(dispatcher_module, "SessionLocal", scheduler_session_local)
+
+    platform_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        pool_pre_ping=True,
+    )
+    platform_session_local = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=platform_engine,
+        expire_on_commit=False,
+    )
+    PlatformBase.metadata.drop_all(bind=platform_engine)
+    PlatformBase.metadata.create_all(bind=platform_engine)
+
+    monkeypatch.setattr(
+        dispatcher_module,
+        "_load_platform_source_dependencies",
+        lambda: (platform_session_local, platform_models, lambda **kwargs: []),
+    )
+
+    db = platform_session_local()
+    source = platform_models.SourceConfig(
+        name="Dynamic RSS",
+        source_type="rss",
+        enabled=True,
+        channels='["https://example.com/feed.xml"]',
+        keywords='["python"]',
+        lookback_hours=24,
+        item_limit=10,
+        dedup_window_hours=24,
+        config_json='{"feed_url":"https://example.com/feed.xml","schedule_expression":"*/15 * * * *"}',
+    )
+    db.add(source)
+    db.commit()
+    db.close()
+
+    dispatcher = dispatcher_module.SchedulerDispatcher()
+    dispatched = dispatcher._run_scheduled_jobs_once(datetime(2026, 6, 13, 9, 15))
+
+    db = scheduler_session_local()
+    task = db.query(SchedulerTask).filter(SchedulerTask.task_type == CONTENT_FETCH_BATCH).first()
+    assert dispatched
+    assert task is not None
+    assert task.status == dispatcher_module.TaskStatus.PENDING
+    assert f"source:{source.id}" in str(task.idempotency_key)
+    db.close()
+
+
+def test_dispatch_scheduled_task_is_idempotent_under_concurrency(monkeypatch) -> None:
+    import scheduler_center.dispatcher as dispatcher_module
+
+    session_local = _make_session_local()
+    monkeypatch.setattr(dispatcher_module, "SessionLocal", session_local)
+
+    dispatcher = dispatcher_module.SchedulerDispatcher()
+    scheduled_for = datetime(2026, 6, 13, 9, 30)
+
+    def _submit() -> str:
+        return dispatcher.dispatch_scheduled_task(
+            task_type=CONTENT_FETCH_BATCH,
+            payload={"source_config_id": 1, "source_type": "rss"},
+            scheduled_for=scheduled_for,
+            idempotency_key="content.fetch.batch:source:1:2026-06-13T09:30",
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(lambda _: _submit(), range(8)))
+
+    db = session_local()
+    tasks = (
+        db.query(SchedulerTask)
+        .filter(SchedulerTask.idempotency_key == "content.fetch.batch:source:1:2026-06-13T09:30")
+        .all()
+    )
+    assert len(set(results)) == 1
+    assert len(tasks) == 1
     db.close()
 
 

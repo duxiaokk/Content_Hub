@@ -28,10 +28,40 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          antd: ['antd', '@ant-design/icons'],
-          charts: ['recharts'],
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined;
+          }
+          if (id.includes('react-router-dom') || id.includes('react-dom') || id.includes('/react/')) {
+            return 'react-core';
+          }
+          if (
+            id.includes('/antd/') ||
+            id.includes('@ant-design/') ||
+            id.includes('/rc-') ||
+            id.includes('@rc-component/')
+          ) {
+            return 'antd-core';
+          }
+          if (id.includes('@ant-design/icons')) {
+            return 'antd-icons';
+          }
+          if (id.includes('/recharts/')) {
+            return 'charts';
+          }
+          if (id.includes('/react-markdown/')) {
+            return 'markdown';
+          }
+          if (id.includes('/axios/')) {
+            return 'network';
+          }
+          if (id.includes('/dayjs/')) {
+            return 'time';
+          }
+          if (id.includes('/zustand/')) {
+            return 'state';
+          }
+          return undefined;
         },
       },
     },

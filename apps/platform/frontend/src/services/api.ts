@@ -11,6 +11,8 @@ import type {
   CreatePostRequest,
   DigestReport,
   FetchRun,
+  FetchMonitorOverview,
+  FetchRunMonitorDetail,
   LoginRequest,
   LoginResponse,
   OrchestrationRun,
@@ -274,6 +276,16 @@ export async function listFetchRuns(
   const res = await apiClient.get<ApiResponse<PaginatedResponse<FetchRun>>>('/console/fetch-runs', {
     params: { page, page_size: pageSize, ...params },
   });
+  return res.data.data;
+}
+
+export async function getFetchMonitorOverview(): Promise<FetchMonitorOverview> {
+  const res = await apiClient.get<ApiResponse<FetchMonitorOverview>>('/console/fetch-monitor/overview');
+  return res.data.data;
+}
+
+export async function getFetchRunDetail(fetchRunId: number): Promise<FetchRunMonitorDetail> {
+  const res = await apiClient.get<ApiResponse<FetchRunMonitorDetail>>(`/console/fetch-runs/${fetchRunId}/detail`);
   return res.data.data;
 }
 

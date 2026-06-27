@@ -85,6 +85,12 @@ export interface SourceConfig {
   item_limit: number;
   dedup_window_hours: number;
   config: Record<string, any>;
+  schedule_expression?: string | null;
+  retry_times?: number;
+  retry_backoff_seconds?: number;
+  request_timeout_seconds?: number;
+  validation_rules?: Record<string, unknown>;
+  alert_policy?: Record<string, unknown>;
   last_cursor?: Record<string, unknown> | string | null;
   last_run_at?: string | null;
   created_at?: string | null;
@@ -125,6 +131,68 @@ export interface FetchRun {
   finished_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+export interface FetchMonitorAlert {
+  source: string;
+  alert_type: string;
+  severity: string;
+  message: string;
+  payload?: Record<string, unknown>;
+  fetch_run_id?: number;
+  source_config_id?: number;
+  source_name?: string | null;
+}
+
+export interface FetchSourceStat {
+  source: string;
+  status: string;
+  fetched_count: number;
+  inserted_count: number;
+  deduped_count: number;
+  invalid_count: number;
+  retried_count: number;
+  elapsed_ms: number;
+  previous_cursor?: string | null;
+  next_cursor?: string | null;
+  resume_cursor?: string | null;
+}
+
+export interface FetchMonitorOverview {
+  total_runs: number;
+  successful_runs: number;
+  failed_runs: number;
+  running_runs: number;
+  success_rate: number;
+  source_summaries: Array<{
+    source_config_id: number;
+    source_name: string;
+    source_type: string;
+    total_runs: number;
+    success_runs: number;
+    failure_runs: number;
+    success_rate: number;
+    last_run_at?: string | null;
+    last_status?: string | null;
+  }>;
+  recent_alerts: FetchMonitorAlert[];
+}
+
+export interface FetchRunMonitorDetail {
+  fetch_run: FetchRun;
+  task: Record<string, unknown>;
+  logs: Array<{
+    id: number;
+    trace_id?: string | null;
+    level: string;
+    message: string;
+    created_at: string;
+  }>;
+  stats: Record<string, unknown>;
+  alerts: FetchMonitorAlert[];
+  validation_issues: Array<Record<string, unknown>>;
+  source_stats: FetchSourceStat[];
+  checkpoints: Record<string, unknown>;
 }
 
 export interface ContentItem {
